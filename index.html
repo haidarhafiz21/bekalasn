@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BekalASN — Belajar SKD CPNS</title>
+  <meta name="description" content="Rangkuman materi SKD CPNS, cara cepat mengerjakan soal, latihan soal TWK, TIU, TKP dengan pembahasan, dan simulasi CAT.">
+  <meta name="theme-color" content="#2B2A63">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="BekalASN">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 6.5c4.2 0 7.3 1.5 8.4 4.1V21c-1.2-2.6-4.3-4-8.4-4z' fill='%238B7FE0'/%3E%3Cpath d='M21 6.5c-4.2 0-7.3 1.5-8.4 4.1V21c1.2-2.6 4.3-4 8.4-4z' fill='%232B2A63'/%3E%3Ccircle cx='12' cy='4' r='2.2' fill='%23F4C74F'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css?v=cabc9fc34f">
+</head>
+<body data-layout="gate">
+  <a class="skip" href="#app">Lewati ke konten utama</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav__in">
+      <a href="#/" class="brand" aria-label="Beranda">
+        <svg class="brand__mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 6.5c4.2 0 7.3 1.5 8.4 4.1V21c-1.2-2.6-4.3-4-8.4-4z" fill="#8B7FE0"/>
+          <path d="M21 6.5c-4.2 0-7.3 1.5-8.4 4.1V21c1.2-2.6 4.3-4 8.4-4z" fill="#2B2A63"/>
+          <circle cx="12" cy="4" r="2.2" fill="#F4C74F"/>
+        </svg>
+        <span class="brand__name" data-site-name>BekalASN</span>
+      </a>
+      <nav class="nav__links" aria-label="Navigasi utama">
+        <a href="#/materi" data-nav="materi">Materi</a>
+        <a href="#/latihan" data-nav="latihan">Latihan Soal</a>
+        <a href="#/simulasi" data-nav="simulasi">Simulasi SKD</a>
+        <a href="#/panduan" data-nav="panduan">Panduan SKD</a>
+      </nav>
+      <div class="nav__actions">
+        <a class="iconbtn" href="#/materi?cari=1" aria-label="Cari materi">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        </a>
+        <a class="btn btn--outline btn--sm nav__cta" href="#/materi">Mulai Belajar</a>
+        <button class="iconbtn nav__burger" aria-label="Buka menu" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="app" tabindex="-1"></main>
+
+  <footer class="footer">
+    <div class="container footer__grid">
+      <div class="footer__brand">
+        <a href="#/" class="brand">
+          <svg class="brand__mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 6.5c4.2 0 7.3 1.5 8.4 4.1V21c-1.2-2.6-4.3-4-8.4-4z" fill="#8B7FE0"/>
+            <path d="M21 6.5c-4.2 0-7.3 1.5-8.4 4.1V21c1.2-2.6 4.3-4 8.4-4z" fill="#2B2A63"/>
+            <circle cx="12" cy="4" r="2.2" fill="#F4C74F"/>
+          </svg>
+          <span class="brand__name" data-site-name>BekalASN</span>
+        </a>
+        <p>Tempat belajar SKD CPNS yang ringkas: pahami konsepnya, kuasai jalan pintasnya, lalu uji dirimu.</p>
+      </div>
+      <div>
+        <h4>Belajar</h4>
+        <ul>
+          <li><a href="#/materi?k=twk">Wawasan Kebangsaan</a></li>
+          <li><a href="#/materi?k=tiu">Intelegensia Umum</a></li>
+          <li><a href="#/materi?k=tkp">Karakteristik Pribadi</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Berlatih</h4>
+        <ul>
+          <li><a href="#/latihan">Latihan per topik</a></li>
+          <li><a href="#/simulasi/mini">Simulasi mini</a></li>
+          <li><a href="#/simulasi/penuh">Simulasi penuh</a></li>
+          <li><a href="#/panduan">Panduan & waktu SKD</a></li>
+          <li><a href="#/hasil">Hasil terakhir</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Catatan</h4>
+        <p class="footer__note">Situs latihan mandiri. Tidak berafiliasi dengan BKN maupun panitia seleksi nasional. Selalu cek pengumuman resmi untuk ketentuan terbaru.</p>
+      </div>
+    </div>
+    <div class="container footer__bottom">
+      <span>© <span data-year>2026</span> <span data-site-name>BekalASN</span>. Dibuat untuk para calon abdi negara.</span>
+      <span>Progres belajar tersimpan di perangkat ini.</span>
+    </div>
+  </footer>
+
+  <div id="modal-root"></div>
+  <div id="toast-root" aria-live="polite"></div>
+
+  <!-- Konfigurasi situs -->
+  <script src="assets/js/data/config.js?v=cabc9fc34f"></script>
+  <!-- Konten terenkripsi & gerbang lisensi -->
+  <script src="assets/js/vendor/ed25519-verify.js?v=cabc9fc34f"></script>
+  <script src="assets/js/konten.js?v=cabc9fc34f"></script>
+  <script src="assets/js/gerbang.js?v=cabc9fc34f"></script>
+  <!-- Aplikasi -->
+  <script src="assets/js/app.js?v=cabc9fc34f"></script>
+  <script src="assets/js/quiz.js?v=cabc9fc34f"></script>
+  <script src="assets/js/pages.js?v=cabc9fc34f"></script>
+  <script src="assets/js/pwa.js?v=cabc9fc34f"></script>
+</body>
+</html>

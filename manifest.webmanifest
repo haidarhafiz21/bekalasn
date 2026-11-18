@@ -1,0 +1,31 @@
+{
+  "name": "BekalASN — Belajar SKD CPNS",
+  "short_name": "BekalASN",
+  "description": "Rangkuman materi, cara cepat, latihan soal bertimer, dan simulasi CAT SKD CPNS.",
+  "lang": "id",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FBFAFE",
+  "theme_color": "#2B2A63",
+  "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
