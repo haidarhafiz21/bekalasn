@@ -694,6 +694,7 @@ blockquote { margin: 0 0 18px; padding: 4px 0 4px 18px; border-left: 3px solid v
 .dots li { flex: 1; min-width: 4px; max-width: 56px; height: 6px; border-radius: 99px; background: var(--line); transition: background .35s, transform .35s var(--spring); }
 .dots li.is-cur { background: var(--lav-400); transform: scaleY(1.35); }
 .dots li.is-ok { background: var(--ok); }
+.dots li.is-done { background: var(--ink-800); }
 .dots li.is-bad { background: var(--bad); }
 .dots li.is-mid { background: var(--mid); }
 

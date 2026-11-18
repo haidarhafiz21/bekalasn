@@ -149,7 +149,7 @@
   function jalankanLatihan(sesi) {
     const soal = sesi.soalIds.map(data.soal);
     const N = soal.length;
-    let i = 0, benar = 0;
+    let i = 0, dijawab = 0;
 
     const html = `<div class="run">
       <header class="run__bar">
@@ -158,7 +158,7 @@
           <div class="run__title"><span class="run__kicker">Latihan</span><b>${esc(sesi.judul)}</b></div>
           <div class="run__score">
             <span class="run__timer${sesi.batas ? ' is-count' : ''}" id="rTimer" title="${sesi.batas ? 'Sisa waktu (ritme ujian ±55 detik per soal)' : 'Waktu berjalan'}">${ic('timer')}<b>${sesi.batas ? jam(sesi.batas) : '00:00'}</b></span>
-            <span class="run__ok" title="Jawaban tepat">${ic('checkCircle')}<b id="rBenar">0</b></span>
+            <span class="run__ok" title="Soal dijawab — kunci & pembahasan terbuka setelah selesai">${ic('checkCircle')}<b id="rBenar">0</b></span>
             <span class="run__count"><b id="rNo">1</b>/${N}</span>
           </div>
         </div>
@@ -207,7 +207,6 @@
           t0 = Date.now();
           card.innerHTML = `${kepalaSoal(s, i + 1)}
             <div class="${kelasOpsi(s)}" role="group" aria-label="Pilihan jawaban">${opsiHTML(sesi, s)}</div>
-            <div class="q__after"><div><div class="fb" role="status"></div>${pembahasanHTML(s)}</div></div>
             <div class="q__foot">
               <span class="hint">${ic('keyboard')}Tekan <kbd>A</kbd>–<kbd>${HURUF[s.opsi.length - 1]}</kbd> untuk memilih</span>
               <button class="btn btn--ink" data-act="next" disabled>${i === N - 1 ? 'Lihat hasil' : 'Soal berikutnya'} ${ic('arrowRight', 'i-arrow')}</button>
@@ -218,59 +217,38 @@
           dots.forEach((d, j) => d.classList.toggle('is-cur', j === i));
         };
 
+        // Jawaban hanya ditandai (masih bisa diganti sebelum lanjut). Benar/salah,
+        // kunci, dan pembahasan sengaja TIDAK ditampilkan di sini — semuanya baru
+        // terbuka di halaman hasil setelah latihan selesai, agar tidak bisa dicontek.
         const pilih = (oi) => {
           const s = soal[i];
-          if (sesi.jawaban[s.id] != null || selesai) return;
+          if (selesai) return;
+          const baru = sesi.jawaban[s.id] == null;
           sesi.jawaban[s.id] = oi;
-          sesi.waktu[s.id] = Math.max(1, Math.round((Date.now() - t0) / 1000));
-          const n = nilai(s, oi);
-          const opts = $$('.opt', card);
-          opts.forEach((b) => {
-            const bi = +b.dataset.oi;
-            b.disabled = true;
-            b.setAttribute('aria-pressed', String(bi === oi));
-            if (s.tkp) {
-              const sk = s.skor[bi];
-              b.insertAdjacentHTML('beforeend', `<span class="opt__pts s${sk}">+${sk}</span>`);
-              if (bi === oi) b.classList.add(sk === 5 ? 'is-correct' : 'is-picked', 's' + sk);
-              else if (bi === s.kunci) b.classList.add('is-key');
-              else b.classList.add('is-dim');
-            } else if (bi === s.kunci) b.classList.add('is-correct');
-            else if (bi === oi) b.classList.add('is-wrong');
-            else b.classList.add('is-dim');
+          $$('.opt', card).forEach((b) => {
+            const on = +b.dataset.oi === oi;
+            b.classList.toggle('is-picked', on);
+            b.setAttribute('aria-pressed', String(on));
           });
-          const fb = $('.fb', card);
-          const kunci = hurufTampil(sesi, s, s.kunci);
-          if (s.tkp) {
-            fb.className = 'fb ' + (n.skor >= 4 ? 'fb--ok' : n.skor === 3 ? 'fb--mid' : 'fb--bad');
-            fb.innerHTML = n.skor === 5
-              ? `${ic('checkCircle')}<div><b>Skor 5 dari 5.</b> Ini sikap yang paling tepat.</div>`
-              : `${ic(n.skor >= 3 ? 'minusCircle' : 'xCircle')}<div><b>Skor ${n.skor} dari 5.</b> Opsi bernilai 5 adalah <b>${kunci}</b>. Skor tiap opsi ditampilkan di samping.</div>`;
-          } else {
-            fb.className = 'fb ' + (n.status === 'benar' ? 'fb--ok' : 'fb--bad');
-            fb.innerHTML = n.status === 'benar'
-              ? `${ic('checkCircle')}<div><b>Tepat!</b> +5 poin.</div>`
-              : `${ic('xCircle')}<div><b>Belum tepat.</b> Jawaban yang benar adalah <b>${kunci}</b>.</div>`;
+          if (baru) {
+            dijawab++;
+            $('#rBenar', root).textContent = dijawab;
+            dots[i].classList.add('is-done');
+            $('#rProg', root).style.width = ((i + 1) / N) * 100 + '%';
           }
-          if (n.status === 'benar') benar++;
-          $('#rBenar', root).textContent = benar;
-          $('.run__ok', root).classList.remove('bump'); void root.offsetWidth;
-          if (n.status === 'benar') $('.run__ok', root).classList.add('bump');
-          dots[i].classList.add(n.status === 'benar' ? 'is-ok' : s.tkp && n.skor >= 3 ? 'is-mid' : 'is-bad');
-          $('#rProg', root).style.width = ((i + 1) / N) * 100 + '%';
-          card.classList.add('is-answered');
           const nx = $('[data-act="next"]', card);
           nx.disabled = false;
-          setTimeout(() => {
+          if (baru) setTimeout(() => {
             nx.focus({ preventScroll: true });
-            const after = $('.q__after', card);
-            const r = after.getBoundingClientRect();
-            if (r.bottom > window.innerHeight) window.scrollBy({ top: Math.min(r.bottom - window.innerHeight + 96, r.top - 90), behavior: BA.reduceMotion() ? 'auto' : 'smooth' });
-          }, 380);
+            const r = nx.getBoundingClientRect();
+            if (r.bottom > window.innerHeight) window.scrollBy({ top: r.bottom - window.innerHeight + 24, behavior: BA.reduceMotion() ? 'auto' : 'smooth' });
+          }, 200);
         };
 
         const lanjut = () => {
-          if (sesi.jawaban[soal[i].id] == null) return;
+          const s = soal[i];
+          if (sesi.jawaban[s.id] == null) return;
+          sesi.waktu[s.id] = Math.max(1, Math.round((Date.now() - t0) / 1000));
           if (i < N - 1) {
             i++;
             render();
@@ -289,7 +267,7 @@
           if (sedangMengetik(e) || document.querySelector('.modal')) return;
           const k = tombolKeOpsi(e);
           const s = soal[i];
-          if (k >= 0 && k < s.opsi.length && sesi.jawaban[s.id] == null) {
+          if (k >= 0 && k < s.opsi.length) {
             e.preventDefault();
             pilih(urutanOpsi(sesi, s)[k]);
           } else if (e.key === 'Enter' && sesi.jawaban[s.id] != null) {
