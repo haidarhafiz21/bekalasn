@@ -44,7 +44,7 @@
   };
   const durasiTeks = (detik) => {
     const m = Math.floor(detik / 60), d = Math.round(detik % 60);
-    return m ? `${m} mnt ${d} dtk` : `${d} dtk`;
+    return m ? (d ? `${m} mnt ${d} dtk` : `${m} mnt`) : `${d} dtk`;
   };
   const tanggal = (t) =>
     new Date(t).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) +
@@ -92,6 +92,12 @@
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
     send: '<path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/>',
     history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
+    download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+    upload: '<path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+    trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    play: '<path d="M7 4.5v15l12-7.5z"/>',
+    trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   };
   function ic(nama, cls) {
     return `<svg class="ic${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[nama] || ''}</svg>`;
@@ -169,17 +175,30 @@
   BA.nilai = nilai;
 
   /* ---------- penyimpanan progres (localStorage, aman bila diblokir) ---------- */
+  const MAKS_RIWAYAT = 1000; // ringkasan tiap sesi (± 0,5 KB per sesi)
+  const MAKS_ARSIP = 30;     // sesi lengkap untuk membuka ulang pembahasan lama
   const Store = {
     KEY: 'bekalasn:v1',
-    d: { selesai: {}, terbaik: {}, riwayat: [], sesi: null, ulang: null, pref: {} },
+    d: { selesai: {}, terbaik: {}, riwayat: [], arsip: [], sesi: null, aktif: null, ulang: null, pref: {}, cadangan: null, dibuat: null },
     load() {
       try {
         const r = localStorage.getItem(this.KEY);
         if (r) Object.assign(this.d, JSON.parse(r));
       } catch (e) { /* abaikan */ }
+      if (!Array.isArray(this.d.riwayat)) this.d.riwayat = [];
+      if (!Array.isArray(this.d.arsip)) this.d.arsip = [];
+      if (!this.d.pref || typeof this.d.pref !== 'object') this.d.pref = {};
+      if (!this.d.dibuat) this.d.dibuat = Date.now();
     },
     save() {
-      try { localStorage.setItem(this.KEY, JSON.stringify(this.d)); } catch (e) { /* abaikan */ }
+      for (let coba = 0; coba < 4; coba++) {
+        try { localStorage.setItem(this.KEY, JSON.stringify(this.d)); return true; } catch (e) {
+          // Penyimpanan penuh: buang arsip pembahasan terlama dulu (riwayat & progres tetap aman)
+          if (this.d.arsip.length > 3) this.d.arsip = this.d.arsip.slice(0, Math.ceil(this.d.arsip.length / 2));
+          else return false;
+        }
+      }
+      return false;
     },
     isSelesai(id) { return !!this.d.selesai[id]; },
     toggleSelesai(id) {
@@ -189,17 +208,66 @@
       return !!this.d.selesai[id];
     },
     terbaik(id) { return this.d.terbaik[id]; },
+
+    /* --- sesi yang sedang dikerjakan (bertahan saat halaman di-refresh/ditutup) --- */
+    simpanAktif(hash, sesi, posisi) {
+      this.d.aktif = { hash, sesi, posisi: posisi || 0, diperbarui: Date.now() };
+      this.save();
+    },
+    hapusAktif() {
+      if (!this.d.aktif) return;
+      this.d.aktif = null;
+      this.save();
+    },
+    arsipSesi(id) {
+      if (this.d.sesi && this.d.sesi.id === id) return this.d.sesi;
+      return this.d.arsip.find((s) => s.id === id) || null;
+    },
+
+    /* --- cadangan: ekspor & pulihkan (tanpa data lisensi/ID perangkat) --- */
+    ekspor() {
+      const d = this.d;
+      return {
+        aplikasi: 'BekalASN', format: 1, dibuat: Date.now(),
+        data: { selesai: d.selesai, terbaik: d.terbaik, riwayat: d.riwayat, arsip: d.arsip, sesi: d.sesi, pref: d.pref, dibuat: d.dibuat },
+      };
+    },
+    // Menggabungkan cadangan ke data di perangkat ini (tidak ada yang terhapus)
+    impor(obj) {
+      if (!obj || obj.aplikasi !== 'BekalASN' || !obj.data || typeof obj.data !== 'object') throw new Error('File ini bukan cadangan BekalASN.');
+      const x = obj.data, d = this.d;
+      const rw = Array.isArray(x.riwayat) ? x.riwayat.filter((r) => r && r.id && r.waktu && typeof r.persen === 'number') : [];
+      const ada = new Set(d.riwayat.map((r) => r.id));
+      const baru = rw.filter((r) => !ada.has(r.id));
+      d.riwayat = d.riwayat.concat(baru).sort((a, b) => b.waktu - a.waktu).slice(0, MAKS_RIWAYAT);
+      const ar = Array.isArray(x.arsip) ? x.arsip.filter((s) => s && s.id && Array.isArray(s.soalIds)) : [];
+      const adaAr = new Set(d.arsip.map((s) => s.id));
+      d.arsip = d.arsip.concat(ar.filter((s) => !adaAr.has(s.id))).sort((a, b) => (b.selesai || 0) - (a.selesai || 0)).slice(0, MAKS_ARSIP);
+      if (x.selesai && typeof x.selesai === 'object') Object.keys(x.selesai).forEach((k) => { if (!d.selesai[k]) d.selesai[k] = x.selesai[k]; });
+      if (x.terbaik && typeof x.terbaik === 'object') Object.keys(x.terbaik).forEach((k) => {
+        const v = +x.terbaik[k];
+        if (isFinite(v) && (d.terbaik[k] == null || v > d.terbaik[k])) d.terbaik[k] = v;
+      });
+      if (x.sesi && x.sesi.soalIds && (!d.sesi || (x.sesi.selesai || 0) > (d.sesi.selesai || 0))) d.sesi = x.sesi;
+      if (x.dibuat && (!d.dibuat || x.dibuat < d.dibuat)) d.dibuat = x.dibuat;
+      d.cadangan = d.cadangan || null;
+      this.save();
+      return { riwayatBaru: baru.length, totalRiwayat: d.riwayat.length };
+    },
+    // ringkas: { skor, maks, persen, lulus, n, benar, salah, kosong, per, materi, tingkat, durasi }
     catat(sesi, ringkas) {
       this.d.sesi = sesi;
+      this.d.aktif = null;
       if (sesi.sumber && sesi.sumber.tipe === 'materi') {
         const lama = this.d.terbaik[sesi.sumber.id];
         if (lama == null || ringkas.persen > lama) this.d.terbaik[sesi.sumber.id] = ringkas.persen;
       }
-      this.d.riwayat.unshift({
-        id: sesi.id, judul: sesi.judul, jenis: sesi.jenis, waktu: sesi.selesai,
-        skor: ringkas.skor, maks: ringkas.maks, persen: ringkas.persen, lulus: ringkas.lulus,
-      });
-      this.d.riwayat = this.d.riwayat.slice(0, 20);
+      this.d.riwayat = this.d.riwayat.filter((r) => r.id !== sesi.id);
+      this.d.riwayat.unshift(Object.assign({
+        id: sesi.id, judul: sesi.judul, jenis: sesi.jenis, sumber: sesi.sumber, waktu: sesi.selesai, mulai: sesi.mulai,
+      }, ringkas));
+      this.d.riwayat = this.d.riwayat.slice(0, MAKS_RIWAYAT);
+      this.d.arsip = [sesi].concat(this.d.arsip.filter((s) => s.id !== sesi.id)).slice(0, MAKS_ARSIP);
       this.save();
     },
     progresKategori(k) {
@@ -503,6 +571,8 @@
     sudahMulai = true;
     indeks();
     initShell();
+    // Minta browser tidak menghapus progres otomatis saat ruang penyimpanan menipis
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) { /* abaikan */ }
     const reg = BA.registerRoutes;
     reg && reg(App);
     App.render();

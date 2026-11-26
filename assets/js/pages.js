@@ -3,8 +3,42 @@
    ========================================================================== */
 (function () {
   'use strict';
-  const { C, $, $$, esc, fmt, pad, ic, data, Store, UI, App, tanggal } = BA;
+  const { C, $, $$, esc, fmt, pad, ic, data, Store, UI, App, tanggal, jam } = BA;
   const Pages = (BA.Pages = {});
+
+  // Parameter latihan dari preferensi: waktu ujian & tingkat kesulitan
+  const prefQ = () => (Store.d.pref.berwaktu ? '&waktu=1' : '') + (Store.d.pref.tingkat ? '&tingkat=' + Store.d.pref.tingkat : '');
+  BA.prefQ = prefQ;
+  const LABEL_TINGKAT = [['', 'Semua tingkat'], ['mudah', 'Mudah'], ['sedang', 'Sedang'], ['sulit', 'Sulit']];
+
+  /* ---------- banner sesi yang belum selesai ---------- */
+  UI.bannerAktif = function () {
+    const a = Store.d.aktif;
+    if (!a || !a.sesi || !a.hash || !Array.isArray(a.sesi.soalIds)) return '';
+    const s = a.sesi, N = s.soalIds.length, dj = Object.keys(s.jawaban || {}).length;
+    let waktu = '';
+    if (s.akhir) {
+      const sisa = Math.round((s.akhir - Date.now()) / 1000);
+      waktu = sisa > 0 ? `sisa waktu ${jam(sisa)}` : 'waktu sudah habis, buka untuk melihat hasil';
+    }
+    return `<div class="resume reveal" role="status">
+      <span class="resume__ic">${ic('play')}</span>
+      <div class="resume__txt"><small>${s.jenis === 'simulasi' ? 'Simulasi' : 'Latihan'} belum selesai</small><b>${esc(s.judul)}</b><span>${dj} dari ${N} soal dijawab${waktu ? ' · ' + waktu : ''}</span></div>
+      <div class="resume__act"><a class="btn btn--sun btn--sm" href="${esc(a.hash)}">${s.akhir && s.akhir <= Date.now() ? 'Lihat hasil' : 'Lanjutkan'} ${ic('arrowRight', 'i-arrow')}</a><button type="button" class="btn btn--ghost btn--sm" data-act="buang-aktif">Buang</button></div>
+    </div>`;
+  };
+  UI.pasangBannerAktif = function (root) {
+    root.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-act="buang-aktif"]');
+      if (!b) return;
+      const ok = await UI.modal({ judul: 'Buang sesi ini?', isi: '<p>Jawaban pada sesi yang belum selesai akan dihapus dan tidak masuk riwayat.</p>', ok: 'Buang', batal: 'Batal', nada: 'bad' });
+      if (!ok) return;
+      Store.hapusAktif();
+      const el = b.closest('.resume');
+      el && el.remove();
+      UI.toast('<span>Sesi yang belum selesai dibuang</span>');
+    });
+  };
 
   const totalSoalSKD = C.kategori.reduce((a, k) => a + k.jumlahSoal, 0);
   const nilaiMaksSKD = totalSoalSKD * 5;
@@ -65,9 +99,10 @@
   const FAQ = [
     ['Apakah soal SKD ada batas waktunya?', 'Ada. Sebanyak 110 soal dikerjakan dalam 100 menit dengan sistem CAT, atau sekitar 55 detik per soal. Pelamar formasi khusus disabilitas netra mendapat 130 menit. Simulasi di sini memakai batas waktu yang sama, dan latihan per topik bisa diatur memakai ritme ujian.'],
     ['Apakah materi di sini mengikuti kisi-kisi SKD terbaru?', 'Materi disusun mengikuti struktur SKD yang digunakan pada seleksi CPNS: TWK, TIU, dan TKP. Ketentuan seperti jumlah soal dan passing grade dapat berubah setiap tahun, jadi selalu cocokkan dengan pengumuman resmi panitia seleksi.'],
-    ['Bagaimana sistem penilaian TKP?', 'Setiap opsi jawaban TKP bernilai 1 sampai 5 dan tidak ada nilai nol. Karena itu, jangan pernah mengosongkan soal TKP. Di halaman latihan, skor setiap opsi ditampilkan setelah kamu menjawab.'],
+    ['Bagaimana sistem penilaian TKP?', 'Setiap opsi jawaban TKP bernilai 1 sampai 5 dan tidak ada nilai nol. Karena itu, jangan pernah mengosongkan soal TKP. Skor setiap opsi ditampilkan di halaman hasil setelah latihan selesai.'],
     ['Apa bedanya mode latihan dan simulasi?', 'Mode latihan berisi sedikit soal per topik, cocok untuk memahami pola soal; kunci jawaban dan pembahasan terbuka setelah semua soal selesai dikerjakan. Mode simulasi meniru ujian CAT: ada batas waktu, tanda ragu-ragu, dan pembahasan baru terbuka setelah kamu menekan Selesai.'],
-    ['Apakah progres belajar saya tersimpan?', 'Ya. Materi yang ditandai selesai, skor terbaik, dan riwayat latihan disimpan di peramban pada perangkat ini, tanpa perlu membuat akun.'],
+    ['Apakah progres belajar saya tersimpan?', 'Ya. Materi yang ditandai selesai, skor terbaik, seluruh riwayat latihan, dan latihan yang belum selesai disimpan otomatis di perangkat ini. Jika halaman ter-refresh atau tertutup, latihan bisa dilanjutkan dari soal terakhir, dan waktunya tidak diulang dari awal.'],
+    ['Bagaimana kalau ganti HP atau browser dihapus datanya?', 'Buka halaman Progres, lalu tekan Simpan cadangan. File cadangan bisa dikirim ke WhatsApp, Google Drive, atau email sendiri. Di HP baru, buka halaman Progres dan tekan Pulihkan dari cadangan; riwayat lama akan digabung dengan riwayat di HP tersebut. Simpan cadangan secara rutin, misalnya seminggu sekali.'],
     ['Apakah ini soal asli ujian?', 'Bukan. Soal latihan disusun ulang mengikuti pola dan materi SKD agar kamu terbiasa dengan tipe soalnya. Kami tidak menggunakan soal bocoran.'],
   ];
 
@@ -119,6 +154,7 @@
       </div>
     </section>
 
+    ${UI.bannerAktif() ? `<section class="container resume-wrap">${UI.bannerAktif()}</section>` : ''}
     <section class="container skd-wrap"><div class="skd reveal">
       <div class="skd__label"><b>Struktur SKD CPNS</b><span>Sistem CAT · nilai benar 5 poin</span><a class="link link--sm" href="#/panduan">Panduan & strategi waktu ${ic('arrowRight', 'i-arrow')}</a></div>
       <div class="skd__grid">
@@ -185,7 +221,7 @@
           <li class="reveal" style="--d:2">
             <span class="steps3__no">03</span>
             <h3>${ic('checkCircle')}Latihan & bahas</h3>
-            <p>Jawaban langsung dinilai, lengkap dengan alasan di baliknya.</p>
+            <p>Kerjakan dulu, lalu lihat skor dan alasan di balik setiap jawaban.</p>
             <div class="snip snip--ans"><span class="snip__opt"><i>C</i>162 ${ic('check')}</span><span>Tepat. Setiap suku dikali 3.</span></div>
           </li>
         </ol>
@@ -223,6 +259,7 @@
       mount(root) {
         initSearch($('#heroSearch', root));
         initAccordion(root);
+        UI.pasangBannerAktif(root);
       },
     };
   };
@@ -363,7 +400,7 @@
             <li>${ic('bars')}${esc(m.level || 'Dasar')}</li>
           </ul>
           <div class="mhead__act reveal" style="--d:4">
-            <a class="btn btn--sun" href="#/latihan/m/${esc(m.id)}?n=10${Store.d.pref.berwaktu ? '&waktu=1' : ''}">Mulai Latihan ${ic('arrowRight', 'i-arrow')}</a>
+            <a class="btn btn--sun" href="#/latihan/m/${esc(m.id)}?n=10${prefQ()}">Mulai Latihan ${ic('arrowRight', 'i-arrow')}</a>
             <button class="btn btn--ghost" id="btnSelesai" aria-pressed="${Store.isSelesai(m.id)}">${ic('check')}<span></span></button>
           </div>
         </div>
@@ -435,7 +472,7 @@
         <div class="practice__card reveal">
           <span class="kicker">Mode latihan</span>
           <h2>Latihan: ${esc(m.judul)}</h2>
-          <p>Setiap jawaban langsung dinilai dan dibahas. Soal diurutkan dari yang mudah ke yang sulit supaya kamu membangun pemahaman bertahap.</p>
+          <p>Kerjakan semua soal dulu; skor, kunci jawaban, dan pembahasan terbuka setelah selesai. Pilih tingkat kesulitan, atau campur semua tingkat yang diurutkan dari mudah ke sulit.</p>
           <div class="practice__stats">
             <div><b>${soal.length}</b><span>soal tersedia</span></div>
             <div><b>${best != null ? best + '%' : '—'}</b><span>skor terbaik</span></div>
@@ -445,10 +482,18 @@
               <small>${cnt.mudah} mudah · ${cnt.sedang} sedang · ${cnt.sulit} sulit</small>
             </div>
           </div>
-          ${soal.length ? `<fieldset class="seg">
+          ${soal.length ? `<fieldset class="seg" id="segTingkat">
+            <legend>Tingkat kesulitan</legend>
+            ${LABEL_TINGKAT.map(([v, l]) => {
+              const n = v ? cnt[v] || 0 : soal.length;
+              const pilih = (Store.d.pref.tingkat || '') === v && n > 0;
+              return `<label><input type="radio" name="tingkat" value="${v}" ${pilih || (!v && !(cnt[Store.d.pref.tingkat] > 0)) ? 'checked' : ''} ${n ? '' : 'disabled'}><span>${l}<small> · ${n}</small></span></label>`;
+            }).join('')}
+          </fieldset>
+          <fieldset class="seg">
             <legend>Jumlah soal</legend>
             ${opsiN.map((n) => `<label><input type="radio" name="n" value="${n}" ${n === 10 ? 'checked' : ''}><span>${n} soal</span></label>`).join('')}
-            <label><input type="radio" name="n" value="semua" ${!opsiN.includes(10) ? 'checked' : ''}><span>Semua (${soal.length})</span></label>
+            <label><input type="radio" name="n" value="semua" ${!opsiN.includes(10) ? 'checked' : ''}><span>Semua (<span id="nSemua">${soal.length}</span>)</span></label>
           </fieldset>
           <fieldset class="seg">
             <legend>Waktu</legend>
@@ -464,6 +509,8 @@
             <li><span><kbd>Enter</kbd></span>soal berikutnya</li>
             <li><span><kbd>Esc</kbd></span>keluar latihan</li>
           </ul>
+          <h3>${ic('history')}Aman jika ter-refresh</h3>
+          <p>Jawabanmu tersimpan otomatis. Jika halaman tertutup, buka lagi latihannya untuk melanjutkan dari soal terakhir; batas waktu tidak diulang dari awal.</p>
           <h3>${ic('timer')}Soal SKD ada waktunya</h3>
           <p>Di ujian asli, 110 soal dikerjakan dalam 100 menit (±55 detik per soal). Pilih <b>Ritme ujian</b> untuk berlatih dengan batas waktu yang sama. <a class="link link--sm" href="#/panduan">Panduan SKD ${ic('arrowRight', 'i-arrow')}</a></p>
           <h3>${ic('target')}Tips</h3>
@@ -516,12 +563,23 @@
           if (t === 'rangkuman') initToc();
           if (t === 'latihan') {
             const st = $('#startLatihan', panel);
+            const segT = $('#segTingkat', panel);
+            const perbaruiN = () => {
+              const tg = ($('input[name="tingkat"]:checked', panel) || {}).value || '';
+              const n = tg ? soal.filter((s) => (s.tingkat || 'sedang') === tg).length : soal.length;
+              const el = $('#nSemua', panel);
+              if (el) el.textContent = n;
+            };
+            segT && segT.addEventListener('change', perbaruiN);
+            perbaruiN();
             st && st.addEventListener('click', () => {
               const v = ($('input[name="n"]:checked', panel) || {}).value || '10';
               const berwaktu = ($('input[name="waktu"]:checked', panel) || {}).value === '1';
+              const tg = ($('input[name="tingkat"]:checked', panel) || {}).value || '';
               Store.d.pref.berwaktu = berwaktu;
+              Store.d.pref.tingkat = tg;
               Store.save();
-              App.go(`#/latihan/m/${m.id}?n=${v}${berwaktu ? '&waktu=1' : ''}`);
+              App.go(`#/latihan/m/${m.id}?n=${v}${prefQ()}`);
             });
           }
         };
@@ -573,17 +631,23 @@
      ====================================================================== */
   Pages.latihan = function () {
     const riwayat = Store.d.riwayat.slice(0, 6);
-    const wq = () => (Store.d.pref.berwaktu ? '&waktu=1' : '');
+    const wq = prefQ;
+    const adaArsip = (id) => !!Store.arsipSesi(id);
     const html = `
     <section class="page-head">
       <div class="container">
         <nav class="crumbs reveal" aria-label="Remah roti"><a href="#/">Beranda</a>${ic('chevRight')}<span>Latihan Soal</span></nav>
         <h1 class="reveal" style="--d:1">Latihan Soal</h1>
-        <p class="reveal" style="--d:2">Pilih per topik untuk memperdalam satu materi, atau campuran per subtes untuk menguji ketahanan. Setiap jawaban langsung dibahas.</p>
+        <p class="reveal" style="--d:2">Pilih per topik untuk memperdalam satu materi, atau campuran per subtes untuk menguji ketahanan. Kunci dan pembahasan terbuka setelah kamu selesai.</p>
       </div>
     </section>
     <section class="container section--tight hub">
       <div class="hub__main">
+        ${UI.bannerAktif()}
+        <fieldset class="seg seg--wide reveal" id="prefTingkat">
+          <legend>Tingkat kesulitan soal</legend>
+          ${LABEL_TINGKAT.map(([v, l]) => `<label><input type="radio" name="tingkat" value="${v}" ${(Store.d.pref.tingkat || '') === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}
+        </fieldset>
         <label class="switch reveal">
           <input type="checkbox" id="prefWaktu" ${Store.d.pref.berwaktu ? 'checked' : ''}>
           <span class="switch__ui" aria-hidden="true"></span>
@@ -599,11 +663,14 @@
             </header>
             <ul class="hub__list">
               ${ms.map((m) => {
-                const n = data.soalMateri(m.id).length;
+                const semua = data.soalMateri(m.id);
+                const n = semua.length;
+                const nt = { mudah: 0, sedang: 0, sulit: 0 };
+                semua.forEach((s) => nt[s.tingkat || 'sedang']++);
                 const best = Store.terbaik(m.id);
                 return `<li>
                   <a class="hub__row" data-base="#/latihan/m/${esc(m.id)}?n=10" href="#/latihan/m/${esc(m.id)}?n=10${wq()}">
-                    <span class="hub__title"><b>${esc(m.judul)}</b><small>${n} soal · ${esc(m.level || '')}</small></span>
+                    <span class="hub__title"><b>${esc(m.judul)}</b><small>${n} soal · <span class="lvlmini" title="${nt.mudah} mudah, ${nt.sedang} sedang, ${nt.sulit} sulit"><i class="l1">${nt.mudah}</i><i class="l2">${nt.sedang}</i><i class="l3">${nt.sulit}</i></span></small></span>
                     <span class="hub__best">${best != null ? `<span class="minibar"><i style="width:${best}%"></i></span><small>${best}%</small>` : '<small class="muted">Belum dicoba</small>'}</span>
                     <span class="hub__go">${ic('arrowRight')}</span>
                   </a>
@@ -624,9 +691,9 @@
           <h3>${ic('history')}Riwayat terakhir</h3>
           ${riwayat.length ? `<ul class="hist">${riwayat.map((r) => `<li>
               <span class="hist__score ${r.persen >= 70 ? 'is-ok' : ''}">${r.persen}%</span>
-              <span><b>${esc(r.judul)}</b><small>${r.jenis === 'simulasi' ? 'Simulasi' : 'Latihan'} · ${tanggal(r.waktu)}</small></span>
+              <span>${adaArsip(r.id) ? `<a href="#/hasil?id=${esc(r.id)}"><b>${esc(r.judul)}</b></a>` : `<b>${esc(r.judul)}</b>`}<small>${r.jenis === 'simulasi' ? 'Simulasi' : 'Latihan'} · ${tanggal(r.waktu)}</small></span>
             </li>`).join('')}</ul>
-            ${Store.d.sesi ? '<a class="link" href="#/hasil">Lihat hasil terakhir ' + ic('arrowRight', 'i-arrow') + '</a>' : ''}`
+            <a class="link" href="#/progres">Semua riwayat & laporan progres ${ic('arrowRight', 'i-arrow')}</a>`
             : '<p class="muted">Belum ada latihan. Hasilmu akan muncul di sini.</p>'}
         </div>
       </aside>
@@ -635,12 +702,21 @@
       html,
       title: 'Latihan Soal',
       mount(root) {
+        UI.pasangBannerAktif(root);
+        const segarkan = () => $$('[data-base]', root).forEach((a) => (a.href = a.dataset.base + wq()));
         const t = $('#prefWaktu', root);
         t.addEventListener('change', () => {
           Store.d.pref.berwaktu = t.checked;
           Store.save();
-          $$('[data-base]', root).forEach((a) => (a.href = a.dataset.base + wq()));
+          segarkan();
           UI.toast(t.checked ? `${ic('timer')}<span>Latihan memakai waktu ujian (±55 dtk/soal)</span>` : '<span>Latihan tanpa batas waktu</span>');
+        });
+        $('#prefTingkat', root).addEventListener('change', (e) => {
+          Store.d.pref.tingkat = e.target.value;
+          Store.save();
+          segarkan();
+          const lbl = LABEL_TINGKAT.find((x) => x[0] === e.target.value);
+          UI.toast(`<span>Soal latihan: <b>${esc(lbl ? lbl[1].toLowerCase() : '')}</b></span>`);
         });
       },
     };
@@ -685,7 +761,13 @@
     </section>
     <section class="container section--tight sim">
       <div class="sim__main">
+        ${UI.bannerAktif()}
         <div class="sim__presets">${preset('mini')}${preset('penuh')}</div>
+        <fieldset class="seg seg--wide reveal" id="simTingkat">
+          <legend>Tingkat kesulitan</legend>
+          ${LABEL_TINGKAT.map(([v, l]) => `<label><input type="radio" name="simtingkat" value="${v}" ${v ? '' : 'checked'}><span>${v ? l : 'Campuran (seperti ujian)'}</span></label>`).join('')}
+        </fieldset>
+        <p class="muted sim__note" id="simTingkatNote" hidden>${ic('help')}Bank soal per tingkat belum sebanyak format resmi, jadi jumlah soal & passing grade disesuaikan secara proporsional.</p>
         <label class="switch reveal">
           <input type="checkbox" id="khusus">
           <span class="switch__ui" aria-hidden="true"></span>
@@ -695,7 +777,7 @@
       <aside class="rules reveal">
         <h3>Aturan simulasi</h3>
         <ol>
-          <li><b>Waktu berjalan terus.</b> Saat waktu habis, jawaban otomatis dikumpulkan.</li>
+          <li><b>Waktu berjalan terus</b>, termasuk saat halaman di-refresh atau ditutup. Jawaban tersimpan otomatis dan simulasi bisa dilanjutkan. Saat waktu habis, jawaban otomatis dikumpulkan.</li>
           <li><b>Bebas berpindah nomor.</b> Gunakan panel nomor soal atau tombol sebelumnya/berikutnya.</li>
           <li><b>Tandai ragu-ragu</b> untuk soal yang ingin kamu periksa kembali.</li>
           <li><b>Pembahasan terkunci</b> sampai kamu menekan Selesai.</li>
@@ -709,11 +791,17 @@
       html,
       title: 'Simulasi SKD',
       mount(root) {
+        UI.pasangBannerAktif(root);
         const k = $('#khusus', root);
-        k.addEventListener('change', () => {
-          $$('[data-sim]', root).forEach((a) => (a.href = a.dataset.sim + (k.checked ? '?khusus=1' : '')));
+        const segarkan = () => {
+          const tg = ($('input[name="simtingkat"]:checked', root) || {}).value || '';
+          const qs = [k.checked ? 'khusus=1' : '', tg ? 'tingkat=' + tg : ''].filter(Boolean).join('&');
+          $$('[data-sim]', root).forEach((a) => (a.href = a.dataset.sim + (qs ? '?' + qs : '')));
           $$('[data-menit]', root).forEach((b) => (b.textContent = Math.round(+b.dataset.menit * (k.checked ? 1.3 : 1))));
-        });
+          $('#simTingkatNote', root).hidden = !tg;
+        };
+        k.addEventListener('change', segarkan);
+        $('#simTingkat', root).addEventListener('change', segarkan);
       },
     };
   };

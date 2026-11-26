@@ -50,10 +50,48 @@
 
   function selesaikan(sesi) {
     sesi.selesai = Date.now();
-    sesi.durasi = Math.round((sesi.selesai - sesi.mulai) / 1000);
+    // Durasi = waktu benar-benar mengerjakan (jeda saat halaman ditutup tidak dihitung pada latihan tanpa batas)
+    sesi.durasi = sesi.batas
+      ? Math.min(sesi.batas, Math.round((sesi.selesai - sesi.mulai) / 1000))
+      : Math.round(sesi.terpakai != null ? sesi.terpakai : (sesi.selesai - sesi.mulai) / 1000);
     const H = hitung(sesi);
-    Store.catat(sesi, { skor: H.skor, maks: H.maks, persen: H.persen, lulus: H.lulus });
+    // Ringkasan untuk riwayat & laporan perkembangan
+    const per = {}, materi = {}, tingkat = {};
+    Object.keys(H.per).forEach((k) => { const p = H.per[k]; per[k] = { skor: p.skor, maks: p.maks, benar: p.benar, n: p.n }; });
+    H.rows.forEach((r) => {
+      const ok = r.status === 'benar' ? 1 : 0;
+      const m = (materi[r.s.materi] = materi[r.s.materi] || [0, 0]); m[0] += ok; m[1]++;
+      const tg = r.s.tingkat || 'sedang';
+      const t = (tingkat[tg] = tingkat[tg] || [0, 0]); t[0] += ok; t[1]++;
+    });
+    Store.catat(sesi, {
+      skor: H.skor, maks: H.maks, persen: H.persen, lulus: H.lulus, durasi: sesi.durasi,
+      n: H.rows.length, benar: H.benar, salah: H.salah, kosong: H.kosong, per, materi, tingkat,
+    });
   }
+
+  /* ---------- tingkat kesulitan ---------- */
+  const TINGKAT = ['mudah', 'sedang', 'sulit'];
+  const namaTingkat = { mudah: 'Mudah', sedang: 'Sedang', sulit: 'Sulit' };
+  const ambilTingkat = (q) => { const t = q && q.get('tingkat'); return TINGKAT.includes(t) ? t : ''; };
+  const saringTingkat = (pool, t) => (t ? pool.filter((s) => (s.tingkat || 'sedang') === t) : pool);
+  BA.TINGKAT = TINGKAT;
+  BA.namaTingkat = namaTingkat;
+
+  /* ---------- melanjutkan sesi setelah refresh / halaman ditutup ---------- */
+  // Sesi yang belum selesai disimpan bersama alamat halamannya. Saat alamat yang
+  // sama dibuka lagi, sesi itu dilanjutkan — termasuk sisa waktunya (waktu tidak
+  // diulang dari awal, sehingga refresh tidak bisa dipakai untuk menambah waktu).
+  function sesiAktifUntuk(hash) {
+    const a = Store.d.aktif;
+    if (!a || a.hash !== hash || !a.sesi || !Array.isArray(a.sesi.soalIds)) return null;
+    if (!a.sesi.soalIds.every((id) => data.soal(id))) { Store.hapusAktif(); return null; }
+    return a;
+  }
+  Quiz.lanjut = function () {
+    const a = Store.d.aktif;
+    return { redirect: a && a.hash ? a.hash : '#/latihan' };
+  };
 
   /* ---------- potongan tampilan bersama ---------- */
   function kepalaSoal(s, no, total) {
@@ -99,9 +137,13 @@
   const sedangMengetik = (e) => e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
 
   /* ======================================================================
-     MODE LATIHAN — tiap jawaban langsung dinilai & dibahas
+     MODE LATIHAN — kunci & pembahasan baru terbuka setelah selesai
      ====================================================================== */
   Quiz.latihan = function ({ params: [tipe, id], q }) {
+    const hash = location.hash;
+    const aktif = sesiAktifUntuk(hash);
+    if (aktif) return jalankanLatihan(aktif.sesi, aktif.posisi, hash);
+
     let pool, judul, sumber;
     if (tipe === 'm') {
       const m = data.materi(id);
@@ -112,25 +154,31 @@
       if (!k) return BA.Pages.notFound();
       pool = data.soalKategori(id); judul = 'Campuran ' + k.kode; sumber = { tipe: 'kategori', id };
     }
+    const tg = ambilTingkat(q);
+    pool = saringTingkat(pool, tg);
+    if (tg) { judul += ' · ' + namaTingkat[tg]; sumber.tingkat = tg; }
     const nParam = q.get('n') || '10';
     const n = nParam === 'semua' ? pool.length : Math.min(parseInt(nParam, 10) || 10, pool.length);
     let soal = acak(pool).slice(0, n);
     if (tipe === 'm') soal.sort((a, b) => (data.urutTingkat[a.tingkat] ?? 1) - (data.urutTingkat[b.tingkat] ?? 1));
     sumber.n = nParam;
-    if (!soal.length) return kosong('Belum ada soal untuk bagian ini.', tipe === 'm' ? `#/materi/${id}` : '#/latihan');
+    if (!soal.length) return kosong(tg ? `Belum ada soal tingkat ${namaTingkat[tg].toLowerCase()} untuk bagian ini.` : 'Belum ada soal untuk bagian ini.', tipe === 'm' ? `#/materi/${id}?tab=latihan` : '#/latihan');
     const sesi = buatSesi('latihan', judul, sumber, soal);
     if (q.get('waktu') === '1') {
       sesi.batas = Math.round(soal.length * DETIK_PER_SOAL);
       sumber.waktu = '1';
     }
-    return jalankanLatihan(sesi);
+    return jalankanLatihan(sesi, 0, hash);
   };
 
   Quiz.ulang = function () {
+    const hash = location.hash;
+    const aktif = sesiAktifUntuk(hash);
+    if (aktif) return jalankanLatihan(aktif.sesi, aktif.posisi, hash);
     const u = Store.d.ulang;
     const soal = u && u.ids ? u.ids.map(data.soal).filter(Boolean) : [];
     if (!soal.length) return { redirect: '#/latihan' };
-    return jalankanLatihan(buatSesi('latihan', 'Ulangi: ' + u.judul.replace(/^Ulangi: /, ''), { tipe: 'ulang' }, acak(soal)));
+    return jalankanLatihan(buatSesi('latihan', 'Ulangi: ' + u.judul.replace(/^Ulangi: /, ''), { tipe: 'ulang' }, acak(soal)), 0, hash);
   };
 
   function kosong(pesan, balik) {
@@ -146,10 +194,17 @@
     return '#/latihan';
   }
 
-  function jalankanLatihan(sesi) {
+  function jalankanLatihan(sesi, posisi, hash) {
     const soal = sesi.soalIds.map(data.soal);
     const N = soal.length;
-    let i = 0, dijawab = 0;
+    let i = Math.min(Math.max(0, posisi || 0), N - 1);
+    let dijawab = Object.keys(sesi.jawaban).length;
+    const dilanjutkan = dijawab > 0 || i > 0;
+    // Batas waktu memakai jam dinding: refresh / tutup halaman tidak mengulang waktu
+    if (sesi.batas && !sesi.akhir) sesi.akhir = sesi.mulai + sesi.batas * 1000;
+    if (sesi.terpakai == null) sesi.terpakai = 0;
+    const simpan = () => Store.simpanAktif(hash, sesi, i);
+    simpan();
 
     const html = `<div class="run">
       <header class="run__bar">
@@ -157,15 +212,15 @@
           <a class="iconbtn" href="${asalLatihan(sesi)}" aria-label="Keluar latihan">${ic('x')}</a>
           <div class="run__title"><span class="run__kicker">Latihan</span><b>${esc(sesi.judul)}</b></div>
           <div class="run__score">
-            <span class="run__timer${sesi.batas ? ' is-count' : ''}" id="rTimer" title="${sesi.batas ? 'Sisa waktu (ritme ujian ±55 detik per soal)' : 'Waktu berjalan'}">${ic('timer')}<b>${sesi.batas ? jam(sesi.batas) : '00:00'}</b></span>
-            <span class="run__ok" title="Soal dijawab — kunci & pembahasan terbuka setelah selesai">${ic('checkCircle')}<b id="rBenar">0</b></span>
+            <span class="run__timer${sesi.batas ? ' is-count' : ''}" id="rTimer" title="${sesi.batas ? 'Sisa waktu (ritme ujian ±55 detik per soal)' : 'Waktu berjalan'}">${ic('timer')}<b>${sesi.batas ? jam(Math.max(0, (sesi.akhir - Date.now()) / 1000)) : jam(sesi.terpakai)}</b></span>
+            <span class="run__ok" title="Soal dijawab — kunci & pembahasan terbuka setelah selesai">${ic('checkCircle')}<b id="rBenar">${dijawab}</b></span>
             <span class="run__count"><b id="rNo">1</b>/${N}</span>
           </div>
         </div>
         <div class="run__progress"><i id="rProg"></i></div>
       </header>
       <div class="container run__body">
-        <ol class="dots" id="rDots" aria-hidden="true">${soal.map((_, j) => `<li data-j="${j}"></li>`).join('')}</ol>
+        <ol class="dots" id="rDots" aria-hidden="true">${soal.map((s, j) => `<li data-j="${j}"${sesi.jawaban[s.id] != null ? ' class="is-done"' : ''}></li>`).join('')}</ol>
         <article class="qcard" id="qcard"></article>
       </div>
     </div>`;
@@ -178,42 +233,53 @@
         const card = $('#qcard', root);
         const dots = $$('#rDots li', root);
         const timerEl = $('#rTimer', root);
-        const tMulai = Date.now();
         let selesai = false, t0 = Date.now();
+        // Stopwatch latihan tanpa batas: hanya menghitung saat halaman terbuka
+        let tJalan = Date.now();
+        const terpakai = () => sesi.terpakai + (Date.now() - tJalan) / 1000;
+        const simpanWaktu = () => { sesi.terpakai = terpakai(); tJalan = Date.now(); simpan(); };
 
         const akhiri = (otomatis) => {
           if (selesai) return;
           selesai = true;
           clearInterval(tick);
+          sesi.terpakai = terpakai();
           selesaikan(sesi);
           if (otomatis) UI.toast(`${ic('timer')}<span>Waktu habis — soal yang belum dijawab dihitung kosong.</span>`);
           App.go('#/hasil');
         };
+        let detik = 0;
         const detak = () => {
-          const lewat = Math.round((Date.now() - tMulai) / 1000);
+          if (selesai) return;
           if (sesi.batas) {
-            const sisa = sesi.batas - lewat;
+            const sisa = Math.round((sesi.akhir - Date.now()) / 1000);
             timerEl.querySelector('b').textContent = jam(Math.max(0, sisa));
             timerEl.classList.toggle('is-warn', sisa <= 60);
             if (sisa <= 0) akhiri(true);
           } else {
-            timerEl.querySelector('b').textContent = jam(lewat);
+            timerEl.querySelector('b').textContent = jam(terpakai());
+            if (++detik % 10 === 0) simpanWaktu();
           }
         };
         const tick = setInterval(detak, 1000);
+        const onHide = () => { if (!selesai && document.visibilityState === 'hidden') simpanWaktu(); };
+        document.addEventListener('visibilitychange', onHide);
+        window.addEventListener('pagehide', onHide);
 
         const render = () => {
           const s = soal[i];
           t0 = Date.now();
+          const pil = sesi.jawaban[s.id];
           card.innerHTML = `${kepalaSoal(s, i + 1)}
             <div class="${kelasOpsi(s)}" role="group" aria-label="Pilihan jawaban">${opsiHTML(sesi, s)}</div>
             <div class="q__foot">
               <span class="hint">${ic('keyboard')}Tekan <kbd>A</kbd>–<kbd>${HURUF[s.opsi.length - 1]}</kbd> untuk memilih</span>
-              <button class="btn btn--ink" data-act="next" disabled>${i === N - 1 ? 'Lihat hasil' : 'Soal berikutnya'} ${ic('arrowRight', 'i-arrow')}</button>
+              <button class="btn btn--ink" data-act="next" ${pil == null ? 'disabled' : ''}>${i === N - 1 ? 'Lihat hasil' : 'Soal berikutnya'} ${ic('arrowRight', 'i-arrow')}</button>
             </div>`;
+          if (pil != null) $$('.opt', card).forEach((b) => { const on = +b.dataset.oi === pil; b.classList.toggle('is-picked', on); b.setAttribute('aria-pressed', String(on)); });
           card.classList.remove('q-enter'); void card.offsetWidth; card.classList.add('q-enter');
           $('#rNo', root).textContent = i + 1;
-          $('#rProg', root).style.width = (i / N) * 100 + '%';
+          $('#rProg', root).style.width = ((i + (pil != null ? 1 : 0)) / N) * 100 + '%';
           dots.forEach((d, j) => d.classList.toggle('is-cur', j === i));
         };
 
@@ -236,6 +302,7 @@
             dots[i].classList.add('is-done');
             $('#rProg', root).style.width = ((i + 1) / N) * 100 + '%';
           }
+          simpan();
           const nx = $('[data-act="next"]', card);
           nx.disabled = false;
           if (baru) setTimeout(() => {
@@ -248,9 +315,10 @@
         const lanjut = () => {
           const s = soal[i];
           if (sesi.jawaban[s.id] == null) return;
-          sesi.waktu[s.id] = Math.max(1, Math.round((Date.now() - t0) / 1000));
+          sesi.waktu[s.id] = (sesi.waktu[s.id] || 0) + Math.max(1, Math.round((Date.now() - t0) / 1000));
           if (i < N - 1) {
             i++;
+            simpanWaktu();
             render();
             window.scrollTo({ top: 0, behavior: BA.reduceMotion() ? 'auto' : 'smooth' });
           } else {
@@ -279,15 +347,23 @@
         };
         document.addEventListener('keydown', onKey);
         render();
+        if (sesi.batas && Date.now() >= sesi.akhir) setTimeout(() => akhiri(true), 0);
+        else if (dilanjutkan) UI.toast(`${ic('play')}<span>Melanjutkan latihan dari soal ${i + 1}${sesi.batas ? ' — waktu tetap berjalan' : ''}.</span>`);
 
         return {
-          cleanup() { clearInterval(tick); document.removeEventListener('keydown', onKey); },
+          cleanup() {
+            clearInterval(tick);
+            if (!selesai) simpanWaktu();
+            document.removeEventListener('keydown', onKey);
+            document.removeEventListener('visibilitychange', onHide);
+            window.removeEventListener('pagehide', onHide);
+          },
           guard() {
             if (selesai || !Object.keys(sesi.jawaban).length) return Promise.resolve(true);
             return UI.modal({
               judul: 'Keluar dari latihan?',
-              isi: `<p>Kamu sudah menjawab ${Object.keys(sesi.jawaban).length} dari ${N} soal. Hasil sesi ini tidak akan disimpan.</p>`,
-              ok: 'Keluar', batal: 'Lanjutkan latihan', nada: 'bad',
+              isi: `<p>Kamu sudah menjawab ${Object.keys(sesi.jawaban).length} dari ${N} soal. Jawabanmu <b>tersimpan</b> dan bisa dilanjutkan dari halaman Latihan.${sesi.batas ? ' Ingat, <b>waktu tetap berjalan</b> walaupun halaman ditutup.' : ''}</p>`,
+              ok: 'Keluar', batal: 'Lanjutkan latihan', nada: 'ink',
             });
           },
         };
@@ -301,27 +377,48 @@
   Quiz.simulasi = function ({ params: [key], q }) {
     const p = C.simulasi[key];
     if (!p) return BA.Pages.notFound();
-    // Formasi khusus disabilitas netra: 130 menit untuk 100 menit normal (+30%)
-    const khusus = q && q.get('khusus') === '1';
-    const menit = Math.round(p.durasiMenit * (khusus ? 1.3 : 1));
-    const soal = [], pg = {}, rentang = [];
-    C.kategori.forEach((k) => {
-      const ambil = acak(data.soalKategori(k.id)).slice(0, p.jumlah[k.id] || 0);
-      if (!ambil.length) return;
-      rentang.push({ k, dari: soal.length, sampai: soal.length + ambil.length - 1 });
-      soal.push(...ambil);
-      pg[k.id] = Math.ceil((k.passingGrade * ambil.length) / k.jumlahSoal);
+    const hash = location.hash;
+    const aktif = sesiAktifUntuk(hash);
+    let sesi, soal, i = 0;
+    if (aktif) {
+      sesi = aktif.sesi;
+      soal = sesi.soalIds.map(data.soal);
+      i = Math.min(Math.max(0, aktif.posisi || 0), soal.length - 1);
+    } else {
+      // Formasi khusus disabilitas netra: 130 menit untuk 100 menit normal (+30%)
+      const khusus = q && q.get('khusus') === '1';
+      const tg = ambilTingkat(q);
+      const menit = Math.round(p.durasiMenit * (khusus ? 1.3 : 1));
+      const pg = {};
+      soal = [];
+      C.kategori.forEach((k) => {
+        const ambil = acak(saringTingkat(data.soalKategori(k.id), tg)).slice(0, p.jumlah[k.id] || 0);
+        if (!ambil.length) return;
+        soal.push(...ambil);
+        pg[k.id] = Math.ceil((k.passingGrade * ambil.length) / k.jumlahSoal);
+      });
+      if (!soal.length) return kosong('Bank soal masih kosong.', '#/simulasi');
+      const judul = p.nama + (tg ? ' · ' + namaTingkat[tg] : '') + (khusus ? ' (waktu formasi khusus)' : '');
+      sesi = buatSesi('simulasi', judul, { tipe: 'simulasi', id: key, khusus: khusus ? '1' : '', tingkat: tg }, soal, { pg, batas: menit * 60 });
+    }
+    // Batas waktu memakai jam dinding: refresh / tutup halaman tidak mengulang waktu
+    if (!sesi.akhir) sesi.akhir = sesi.mulai + sesi.batas * 1000;
+    const rentang = [];
+    soal.forEach((s, j) => {
+      const r = rentang[rentang.length - 1];
+      if (r && r.k.id === s.kategori) r.sampai = j;
+      else rentang.push({ k: data.kat(s.kategori) || { id: s.kategori, kode: s.kategori }, dari: j, sampai: j });
     });
-    if (!soal.length) return kosong('Bank soal masih kosong.', '#/simulasi');
-    const sesi = buatSesi('simulasi', p.nama + (khusus ? ' (waktu formasi khusus)' : ''), { tipe: 'simulasi', id: key, khusus: khusus ? '1' : '' }, soal, { pg, batas: menit * 60 });
     const N = soal.length;
-    let i = 0;
+    const dilanjutkan = !!aktif;
+    const simpan = () => Store.simpanAktif(hash, sesi, i);
+    simpan();
 
     const html = `<div class="cat">
       <header class="run__bar">
         <div class="container run__bar-in">
           <div class="run__title"><span class="run__kicker">Simulasi</span><b>${esc(p.nama)}</b></div>
-          <div class="timer" id="timer" role="timer">${ic('timer')}<span>${jam(sesi.batas)}</span></div>
+          <div class="timer" id="timer" role="timer">${ic('timer')}<span>${jam(Math.max(0, (sesi.akhir - Date.now()) / 1000))}</span></div>
           <div class="cat__actions">
             <button class="btn btn--ghost btn--sm cat__gridbtn" data-act="grid" aria-expanded="false" aria-controls="cside">${ic('grid')}<span>Nomor</span></button>
             <button class="btn btn--ink btn--sm" data-act="selesai">Selesai</button>
@@ -365,7 +462,7 @@
         const side = $('#cside', root);
         const nums = $$('.ngrid button', root);
         const timerEl = $('#timer', root);
-        const akhir = Date.now() + sesi.batas * 1000;
+        const akhir = sesi.akhir;
         let selesai = false, tick = null, tSoal = Date.now();
         // Catat lama mengerjakan soal yang sedang tampil (dijumlahkan bila soal dibuka lagi)
         const catatWaktu = () => {
@@ -417,6 +514,7 @@
           const arah = j > i ? 1 : -1;
           catatWaktu();
           i = j;
+          simpan();
           render(arah);
           if (window.innerWidth < 1024) toggleSide(false);
           const top = card.getBoundingClientRect().top + window.scrollY - 120;
@@ -434,6 +532,7 @@
           });
           tandaiNomor();
           statistik();
+          simpan();
         };
 
         const toggleRagu = () => {
@@ -443,6 +542,7 @@
           $('[data-act="ragu"]', root).setAttribute('aria-pressed', String(!!sesi.ragu[id]));
           tandaiNomor();
           statistik();
+          simpan();
         };
 
         const toggleSide = (paksa) => {
@@ -456,7 +556,6 @@
           selesai = true;
           clearInterval(tick);
           catatWaktu();
-          window.removeEventListener('beforeunload', onUnload);
           selesaikan(sesi);
           if (otomatis) UI.toast(`${ic('timer')}<span>Waktu habis — jawaban dikumpulkan otomatis.</span>`);
           App.go('#/hasil');
@@ -505,27 +604,32 @@
           else if (e.key.toLowerCase() === 'r' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); toggleRagu(); }
           else if (k >= 0 && k < s.opsi.length) { e.preventDefault(); pilih(urutanOpsi(sesi, s)[k]); }
         };
-        const onUnload = (e) => { e.preventDefault(); e.returnValue = ''; };
+        // Simpan lama mengerjakan soal yang sedang tampil saat halaman disembunyikan/ditutup
+        const onHide = () => { if (!selesai && document.visibilityState === 'hidden') { catatWaktu(); simpan(); } };
 
         document.addEventListener('keydown', onKey);
-        window.addEventListener('beforeunload', onUnload);
+        document.addEventListener('visibilitychange', onHide);
+        window.addEventListener('pagehide', onHide);
         tick = setInterval(perbaruiTimer, 1000);
-        perbaruiTimer();
         render(1);
         statistik();
+        perbaruiTimer();
+        if (dilanjutkan && !selesai) UI.toast(`${ic('play')}<span>Simulasi dilanjutkan — sisa waktu tetap berjalan sejak dimulai.</span>`);
 
         return {
           cleanup() {
             clearInterval(tick);
+            if (!selesai) { catatWaktu(); simpan(); }
             document.removeEventListener('keydown', onKey);
-            window.removeEventListener('beforeunload', onUnload);
+            document.removeEventListener('visibilitychange', onHide);
+            window.removeEventListener('pagehide', onHide);
           },
           guard() {
             if (selesai) return Promise.resolve(true);
             return UI.modal({
               judul: 'Tinggalkan simulasi?',
-              isi: '<p>Simulasi akan dibatalkan dan jawabanmu tidak disimpan. Jika ingin mengakhiri dan melihat skor, gunakan tombol <b>Selesai</b>.</p>',
-              ok: 'Tinggalkan', batal: 'Lanjutkan simulasi', nada: 'bad',
+              isi: '<p>Jawabanmu <b>tersimpan</b> dan simulasi bisa dilanjutkan dari halaman Simulasi, tetapi <b>waktu tetap berjalan</b> seperti ujian sungguhan. Untuk mengakhiri dan melihat skor, gunakan tombol <b>Selesai</b>.</p>',
+              ok: 'Tinggalkan', batal: 'Lanjutkan simulasi', nada: 'ink',
             });
           },
         };
@@ -536,8 +640,15 @@
   /* ======================================================================
      HASIL & PEMBAHASAN
      ====================================================================== */
-  Quiz.hasil = function () {
-    const sesi = Store.d.sesi;
+  Quiz.hasil = function ({ q } = {}) {
+    const idMinta = q && q.get('id');
+    const sesi = idMinta ? Store.arsipSesi(idMinta) : Store.d.sesi;
+    if (idMinta && !sesi) {
+      return {
+        title: 'Hasil',
+        html: `<section class="container nf"><span class="nf__code">${ic('history')}</span><h1>Pembahasan sesi ini sudah tidak tersimpan.</h1><p>Skor dan statistiknya tetap tercatat di laporan. Pembahasan lengkap disimpan untuk ${30} sesi terakhir.</p><a class="btn btn--ink" href="#/progres">${ic('arrowLeft')} Kembali ke Progres</a></section>`,
+      };
+    }
     if (!sesi || !sesi.soalIds) {
       return {
         title: 'Hasil',
@@ -583,10 +694,11 @@
       .sort((a, b) => a.akurasi - b.akurasi)
       .slice(0, 3);
 
-    const w = src.waktu ? '&waktu=1' : '';
+    const w = (src.waktu ? '&waktu=1' : '') + (src.tingkat ? '&tingkat=' + src.tingkat : '');
+    const simQ = [src.khusus ? 'khusus=1' : '', src.tingkat ? 'tingkat=' + src.tingkat : ''].filter(Boolean).join('&');
     const ulangHref = src.tipe === 'materi' ? `#/latihan/m/${src.id}?n=${src.n || 10}${w}`
       : src.tipe === 'kategori' ? `#/latihan/k/${src.id}?n=${src.n || 10}${w}`
-      : src.tipe === 'simulasi' ? `#/simulasi/${src.id}${src.khusus ? '?khusus=1' : ''}` : '#/latihan/ulang';
+      : src.tipe === 'simulasi' ? `#/simulasi/${src.id}${simQ ? '?' + simQ : ''}` : '#/latihan/ulang';
 
     // Waktu per soal
     const waktu = sesi.waktu || {};
@@ -597,6 +709,13 @@
       : sim ? { h: '#/simulasi', t: 'Pilihan simulasi' } : { h: '#/latihan', t: 'Daftar latihan' };
 
     const ringCls = sim ? (H.lulus ? 'ring--ok' : 'ring--bad') : H.persen >= 80 ? 'ring--ok' : H.persen >= 60 ? 'ring--mid' : 'ring--bad';
+
+    // Bandingkan dengan percobaan sebelumnya pada topik/simulasi yang sama
+    const samaSumber = (r) => r.sumber && src.tipe && r.sumber.tipe === src.tipe && r.sumber.id === src.id && (r.sumber.tingkat || '') === (src.tingkat || '');
+    const sebelumnya = Store.d.riwayat.find((r) => r.id !== sesi.id && r.waktu < (sesi.selesai || Date.now()) && samaSumber(r));
+    const selisih = sebelumnya ? H.persen - sebelumnya.persen : null;
+    const banding = selisih == null ? ''
+      : `<p class="delta ${selisih > 0 ? 'delta--up' : selisih < 0 ? 'delta--down' : ''}">${ic(selisih >= 0 ? 'trend' : 'minusCircle')}<span>${selisih > 0 ? `Naik <b>${selisih} poin</b>` : selisih < 0 ? `Turun <b>${-selisih} poin</b>` : '<b>Sama</b>'} dibanding percobaan sebelumnya (${sebelumnya.persen}%).</span></p>`;
 
     const kategoriUrut = C.kategori.map((k) => k.id).filter((k) => H.per[k]);
     const bar = (k) => {
@@ -682,6 +801,7 @@
           <div class="score-card__msg">
             <h2>${judulPesan}</h2>
             <p>${subPesan}</p>
+            ${banding}
           </div>
           ${sim ? `<div class="stamp ${H.lulus ? 'stamp--ok' : 'stamp--bad'}" aria-hidden="true"><span>${H.lulus ? 'Memenuhi' : 'Belum memenuhi'}</span><b>Passing Grade</b></div>` : ''}
         </div>
@@ -708,6 +828,7 @@
         ${kurang.length ? `<button class="btn btn--sun" data-act="ulang-salah">${ic('rotate')}Ulangi yang ${H.rows.every((r) => r.s.tkp) ? 'belum optimal' : 'salah'} (${kurang.length})</button>` : ''}
         <a class="btn btn--ink" href="${ulangHref}">${sim ? 'Simulasi lagi' : 'Kerjakan ulang'}</a>
         <a class="btn btn--ghost" href="${balik.h}">${esc(balik.t)}</a>
+        <a class="btn btn--ghost" href="#/progres">${ic('trend')}Laporan progres</a>
       </div>
 
       <div class="review">
