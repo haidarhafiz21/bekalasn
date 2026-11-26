@@ -3,6 +3,7 @@
    ========================================================================== */
 (function () {
   'use strict';
+  if (!window.BA || window.BA.dibingkai) return; // dibuka di dalam iframe: aplikasi tidak dijalankan
   const { C, $, $$, esc, fmt, polos, ic, data, Store, UI, App, nilai, acak, jam, durasiTeks, tanggal, HURUF } = BA;
   const Quiz = (BA.Quiz = {});
 
@@ -169,7 +170,7 @@
     pool = saringTingkat(pool, tg);
     if (tg) { judul += ' · ' + namaTingkat[tg]; sumber.tingkat = tg; }
     const nParam = q.get('n') || '10';
-    const n = nParam === 'semua' ? pool.length : Math.min(parseInt(nParam, 10) || 10, pool.length);
+    const n = nParam === 'semua' ? pool.length : Math.min(Math.max(1, parseInt(nParam, 10) || 10), pool.length);
     let soal = acak(pool).slice(0, n);
     if (tipe === 'm') soal.sort((a, b) => (data.urutTingkat[a.tingkat] ?? 1) - (data.urutTingkat[b.tingkat] ?? 1));
     sumber.n = nParam;

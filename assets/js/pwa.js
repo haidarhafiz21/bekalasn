@@ -6,7 +6,14 @@
 (function () {
   'use strict';
   if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
-  const sibuk = () => document.body && (document.body.dataset.layout === 'focus' || document.body.dataset.layout === 'gate');
+  // "Sibuk" = sedang mengerjakan soal, atau sedang mengetik kunci lisensi. Layar aktivasi
+  // yang masih kosong boleh dimuat ulang agar pembeli selalu mendapat versi terbaru.
+  const sibuk = () => {
+    const l = document.body && document.body.dataset.layout;
+    if (l === 'focus') return true;
+    if (l === 'gate') { const t = document.getElementById('gKunci'); return !!(t && t.value.trim()); }
+    return false;
+  };
   let tertunda = false, selesai = false;
   const muatUlang = () => {
     if (selesai) return;
@@ -22,6 +29,7 @@
         if (document.visibilityState === 'visible') reg.update().catch(() => {});
       });
       window.addEventListener('hashchange', () => { if (tertunda && !sibuk()) muatUlang(); });
+      setInterval(() => { if (tertunda && !sibuk()) muatUlang(); }, 5000);
     }).catch(() => {});
   });
 })();

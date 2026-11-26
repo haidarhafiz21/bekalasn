@@ -4,6 +4,14 @@
    ========================================================================== */
 (function () {
   'use strict';
+  // Anti-clickjacking: situs tidak boleh ditampilkan di dalam bingkai (iframe) situs lain.
+  // GitHub Pages tidak bisa mengirim header X-Frame-Options, jadi dicegah di sini.
+  if (window.top !== window.self) {
+    document.documentElement.style.display = 'none';
+    window.BA = window.BA || { dibingkai: true }; // cegah galat beruntun di skrip lain
+    try { window.top.location.replace(window.location.href); } catch (e) { /* bingkai diblokir: halaman tetap tersembunyi */ }
+    return;
+  }
 
   const C = window.CPNS;
   const BA = (window.BA = { C });
@@ -177,6 +185,59 @@
   /* ---------- penyimpanan progres (localStorage, aman bila diblokir) ---------- */
   const MAKS_RIWAYAT = 1000; // ringkasan tiap sesi (± 0,5 KB per sesi)
   const MAKS_ARSIP = 30;     // sesi lengkap untuk membuka ulang pembahasan lama
+
+  /* ---------- penyaring data tersimpan / file cadangan ----------
+     Data dari file cadangan (atau localStorage yang rusak) tidak dipercaya:
+     hanya kolom yang dikenal dengan tipe yang benar yang disimpan, sehingga
+     file aneh tidak bisa merusak tampilan atau menyisipkan HTML. */
+  const POLA_ID = /^[A-Za-z0-9_-]{1,48}$/;
+  const objek = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? o : null);
+  const bil = (v, min = 0, max = 1e15) => { v = +v; return isFinite(v) ? Math.min(max, Math.max(min, v)) : 0; };
+  const bilOpsi = (v, min, max) => (v == null ? undefined : bil(v, min, max));
+  const teks = (v, max = 160) => (typeof v === 'string' ? v.slice(0, max) : '');
+  const kunciAman = (o, f, batas = 400) => {
+    const r = {};
+    if (objek(o)) Object.keys(o).slice(0, batas).forEach((k) => { if (POLA_ID.test(k)) { const v = f(o[k]); if (v !== undefined) r[k] = v; } });
+    return r;
+  };
+  const pasangan = (v) => (Array.isArray(v) ? [bil(v[0]), bil(v[1])] : undefined);
+  function bersihSumber(x) {
+    const r = {};
+    if (objek(x)) ['tipe', 'id', 'n', 'tingkat', 'waktu', 'khusus'].forEach((k) => { if (x[k] != null && POLA_ID.test(String(x[k]))) r[k] = String(x[k]); });
+    return r;
+  }
+  function bersihRiwayat(x) {
+    if (!objek(x) || !POLA_ID.test(String(x.id)) || !isFinite(+x.waktu) || !isFinite(+x.persen)) return null;
+    const r = {
+      id: String(x.id), judul: teks(x.judul), jenis: x.jenis === 'simulasi' ? 'simulasi' : 'latihan',
+      sumber: bersihSumber(x.sumber), waktu: bil(x.waktu), persen: Math.round(bil(x.persen, 0, 100)),
+      skor: bil(x.skor), maks: bil(x.maks), lulus: x.lulus == null ? null : !!x.lulus,
+    };
+    ['mulai', 'durasi', 'n', 'benar', 'salah', 'kosong'].forEach((k) => { const v = bilOpsi(x[k]); if (v !== undefined) r[k] = v; });
+    if (objek(x.per)) r.per = kunciAman(x.per, (p) => (objek(p) ? { skor: bil(p.skor), maks: bil(p.maks), benar: bil(p.benar), n: bil(p.n) } : undefined));
+    if (objek(x.materi)) r.materi = kunciAman(x.materi, pasangan);
+    if (objek(x.tingkat)) r.tingkat = kunciAman(x.tingkat, pasangan);
+    return r;
+  }
+  function bersihSesi(x) {
+    if (!objek(x) || !POLA_ID.test(String(x.id)) || !Array.isArray(x.soalIds)) return null;
+    const ids = x.soalIds.filter((id) => typeof id === 'string' && POLA_ID.test(id)).slice(0, 300);
+    if (!ids.length) return null;
+    const r = {
+      id: String(x.id), jenis: x.jenis === 'simulasi' ? 'simulasi' : 'latihan', judul: teks(x.judul), sumber: bersihSumber(x.sumber),
+      soalIds: ids,
+      urutan: kunciAman(x.urutan, (u) => (Array.isArray(u) && u.length <= 8 && u.every((n, i) => Number.isInteger(n) && n >= 0 && n < u.length && u.indexOf(n) === i) ? u.slice() : undefined)),
+      jawaban: kunciAman(x.jawaban, (v) => (Number.isInteger(v) && v >= 0 && v < 8 ? v : undefined)),
+      ragu: kunciAman(x.ragu, (v) => (v ? true : undefined)),
+      waktu: kunciAman(x.waktu, (v) => (isFinite(+v) ? bil(v, 0, 86400) : undefined)),
+      mulai: bil(x.mulai),
+    };
+    ['selesai', 'durasi', 'batas', 'akhir', 'terpakai', 'perSoal', 'akhirSoal'].forEach((k) => { const v = bilOpsi(x[k]); if (v !== undefined) r[k] = v; });
+    if (objek(x.pg)) r.pg = kunciAman(x.pg, (v) => bil(v, 0, 10000));
+    return r;
+  }
+  BA.bersih = { riwayat: bersihRiwayat, sesi: bersihSesi };
+
   const Store = {
     KEY: 'bekalasn:v1',
     d: { selesai: {}, terbaik: {}, riwayat: [], arsip: [], sesi: null, aktif: null, ulang: null, pref: {}, cadangan: null, dibuat: null },
@@ -187,7 +248,16 @@
       } catch (e) { /* abaikan */ }
       if (!Array.isArray(this.d.riwayat)) this.d.riwayat = [];
       if (!Array.isArray(this.d.arsip)) this.d.arsip = [];
-      if (!this.d.pref || typeof this.d.pref !== 'object') this.d.pref = {};
+      if (!objek(this.d.pref)) this.d.pref = {};
+      if (!objek(this.d.selesai)) this.d.selesai = {};
+      if (!objek(this.d.terbaik)) this.d.terbaik = {};
+      if (this.d.ulang && !(objek(this.d.ulang) && Array.isArray(this.d.ulang.ids))) this.d.ulang = null;
+      // Buang entri yang rusak agar satu data aneh tidak membuat halaman error
+      this.d.riwayat = this.d.riwayat.map(bersihRiwayat).filter(Boolean);
+      this.d.arsip = this.d.arsip.map(bersihSesi).filter(Boolean);
+      if (this.d.sesi) this.d.sesi = bersihSesi(this.d.sesi);
+      if (this.d.aktif && !(objek(this.d.aktif) && typeof this.d.aktif.hash === 'string' && this.d.aktif.hash.startsWith('#/') && bersihSesi(this.d.aktif.sesi))) this.d.aktif = null;
+      else if (this.d.aktif) this.d.aktif = { hash: this.d.aktif.hash, sesi: bersihSesi(this.d.aktif.sesi), posisi: Math.max(0, Math.floor(+this.d.aktif.posisi) || 0), diperbarui: +this.d.aktif.diperbarui || Date.now() };
       if (!this.d.dibuat) this.d.dibuat = Date.now();
     },
     save() {
@@ -236,20 +306,20 @@
     impor(obj) {
       if (!obj || obj.aplikasi !== 'BekalASN' || !obj.data || typeof obj.data !== 'object') throw new Error('File ini bukan cadangan BekalASN.');
       const x = obj.data, d = this.d;
-      const rw = Array.isArray(x.riwayat) ? x.riwayat.filter((r) => r && r.id && r.waktu && typeof r.persen === 'number') : [];
+      const rw = Array.isArray(x.riwayat) ? x.riwayat.slice(0, MAKS_RIWAYAT * 2).map(bersihRiwayat).filter(Boolean) : [];
       const ada = new Set(d.riwayat.map((r) => r.id));
       const baru = rw.filter((r) => !ada.has(r.id));
       d.riwayat = d.riwayat.concat(baru).sort((a, b) => b.waktu - a.waktu).slice(0, MAKS_RIWAYAT);
-      const ar = Array.isArray(x.arsip) ? x.arsip.filter((s) => s && s.id && Array.isArray(s.soalIds)) : [];
+      const ar = Array.isArray(x.arsip) ? x.arsip.slice(0, MAKS_ARSIP * 2).map(bersihSesi).filter(Boolean) : [];
       const adaAr = new Set(d.arsip.map((s) => s.id));
       d.arsip = d.arsip.concat(ar.filter((s) => !adaAr.has(s.id))).sort((a, b) => (b.selesai || 0) - (a.selesai || 0)).slice(0, MAKS_ARSIP);
-      if (x.selesai && typeof x.selesai === 'object') Object.keys(x.selesai).forEach((k) => { if (!d.selesai[k]) d.selesai[k] = x.selesai[k]; });
-      if (x.terbaik && typeof x.terbaik === 'object') Object.keys(x.terbaik).forEach((k) => {
-        const v = +x.terbaik[k];
-        if (isFinite(v) && (d.terbaik[k] == null || v > d.terbaik[k])) d.terbaik[k] = v;
-      });
-      if (x.sesi && x.sesi.soalIds && (!d.sesi || (x.sesi.selesai || 0) > (d.sesi.selesai || 0))) d.sesi = x.sesi;
-      if (x.dibuat && (!d.dibuat || x.dibuat < d.dibuat)) d.dibuat = x.dibuat;
+      Object.keys(kunciAman(x.selesai, (v) => (v ? 1 : undefined))).forEach((k) => { if (!d.selesai[k]) d.selesai[k] = isFinite(+x.selesai[k]) ? +x.selesai[k] : Date.now(); });
+      const tb = kunciAman(x.terbaik, (v) => (isFinite(+v) ? bil(v, 0, 100) : undefined));
+      Object.keys(tb).forEach((k) => { if (d.terbaik[k] == null || tb[k] > d.terbaik[k]) d.terbaik[k] = tb[k]; });
+      const ss = bersihSesi(x.sesi);
+      if (ss && (!d.sesi || (ss.selesai || 0) > (d.sesi.selesai || 0))) d.sesi = ss;
+      const dibuat = bil(x.dibuat);
+      if (dibuat && (!d.dibuat || dibuat < d.dibuat)) d.dibuat = dibuat;
       d.cadangan = d.cadangan || null;
       this.save();
       return { riwayatBaru: baru.length, totalRiwayat: d.riwayat.length };

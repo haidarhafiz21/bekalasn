@@ -3,6 +3,7 @@
    ========================================================================== */
 (function () {
   'use strict';
+  if (!window.BA || window.BA.dibingkai) return; // dibuka di dalam iframe: aplikasi tidak dijalankan
   const { C, $, $$, esc, fmt, pad, ic, data, Store, UI, App, tanggal, jam } = BA;
   const Pages = (BA.Pages = {});
 

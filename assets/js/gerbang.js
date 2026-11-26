@@ -6,6 +6,14 @@
    ========================================================================== */
 (function () {
   'use strict';
+  // Anti-clickjacking: situs tidak boleh ditampilkan di dalam bingkai (iframe) situs lain.
+  // GitHub Pages tidak bisa mengirim header X-Frame-Options, jadi dicegah di sini.
+  if (window.top !== window.self) {
+    document.documentElement.style.display = 'none';
+    window.BA = window.BA || { dibingkai: true }; // cegah galat beruntun di skrip lain
+    try { window.top.location.replace(window.location.href); } catch (e) { /* bingkai diblokir: halaman tetap tersembunyi */ }
+    return;
+  }
   const KUNCI_PUBLIK = 'gGnriWtvwMbOvujNTMHcwBkJWJPSgLetKSoxBFDstGk';
   const AWALAN = 'BA1';
   const K_DEV = 'bekalasn:perangkat';
@@ -37,6 +45,8 @@
   const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
   const dalamAplikasi = /FBAN|FBAV|FB_IAB|Instagram|Line\/|TikTok|musical_ly|BytedanceWebview|Twitter|Snapchat/i.test(ua);
+  // Penyimpanan diblokir (mis. mode penyamaran tertentu) → ID perangkat & lisensi tidak bisa diingat
+  const bisaSimpan = (() => { try { localStorage.setItem('bekalasn:uji', '1'); const ok = localStorage.getItem('bekalasn:uji') === '1'; localStorage.removeItem('bekalasn:uji'); return ok; } catch (e) { return false; } })();
   const bisaKripto = !!(window.crypto && crypto.subtle && window.TextEncoder && window.DecompressionStream);
 
   /* ---------- ID perangkat ---------- */
@@ -116,7 +126,9 @@
     // ID perangkat & kolom kunci SELALU ditampilkan (juga di iPhone/Safari dan browser
     // dalam aplikasi). Untuk kondisi yang datanya mudah hilang, cukup diberi saran.
     let saran = '';
-    if (dalamAplikasi) {
+    if (!bisaSimpan) {
+      saran = `<div class="gate__tip"><b>Browser ini tidak mengizinkan situs menyimpan data</b> (biasanya karena mode penyamaran/incognito atau pengaturan privasi). ID perangkat akan berubah setiap kali dibuka dan lisensi tidak tersimpan. Buka situs ini di tab biasa, lalu salin ID perangkat yang muncul di sana.</div>`;
+    } else if (dalamAplikasi) {
       saran = `<div class="gate__tip"><b>Sebaiknya buka di Chrome atau Safari.</b> Kamu sedang membuka halaman ini dari dalam aplikasi lain (TikTok, Instagram, atau Facebook), dan lisensinya bisa hilang saat aplikasi itu ditutup. Ketuk <b>⋯</b>/<b>⋮</b> di pojok kanan atas → <b>Buka di browser</b>.
         <button class="btn btn--ghost btn--sm" id="gSalinLink" type="button">${ikon(IK.salin)}<span>Salin tautan halaman</span></button></div>`;
     } else if (harusPasang) {

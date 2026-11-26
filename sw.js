@@ -1,7 +1,7 @@
-/* BekalASN e7e0985b95 — simpan file aplikasi agar bisa dipakai offline */
-const CACHE = 'bekalasn-e7e0985b95';
+/* BekalASN 4abc0a1097 — simpan file aplikasi agar bisa dipakai offline */
+const CACHE = 'bekalasn-4abc0a1097';
 const FONT = 'bekalasn-font';
-const FILES = ["./","index.html","manifest.webmanifest","assets/css/style.css?v=e7e0985b95","assets/js/data/config.js?v=e7e0985b95","assets/js/vendor/ed25519-verify.js?v=e7e0985b95","assets/js/app.js?v=e7e0985b95","assets/js/quiz.js?v=e7e0985b95","assets/js/pages.js?v=e7e0985b95","assets/js/laporan.js?v=e7e0985b95","assets/js/pwa.js?v=e7e0985b95","assets/icons/icon-32.png","assets/icons/icon-192.png","assets/icons/icon-512.png","assets/icons/icon-maskable-512.png","assets/icons/apple-touch-icon.png","assets/js/gerbang.js?v=e7e0985b95","assets/js/konten.js?v=e7e0985b95"];
+const FILES = ["./","index.html","manifest.webmanifest","assets/css/style.css?v=4abc0a1097","assets/js/data/config.js?v=4abc0a1097","assets/js/vendor/ed25519-verify.js?v=4abc0a1097","assets/js/app.js?v=4abc0a1097","assets/js/quiz.js?v=4abc0a1097","assets/js/pages.js?v=4abc0a1097","assets/js/laporan.js?v=4abc0a1097","assets/js/pwa.js?v=4abc0a1097","assets/icons/icon-32.png","assets/icons/icon-192.png","assets/icons/icon-512.png","assets/icons/icon-maskable-512.png","assets/icons/apple-touch-icon.png","assets/js/gerbang.js?v=4abc0a1097","assets/js/konten.js?v=4abc0a1097"];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });

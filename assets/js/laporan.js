@@ -4,6 +4,7 @@
    ========================================================================== */
 (function () {
   'use strict';
+  if (!window.BA || window.BA.dibingkai) return; // dibuka di dalam iframe: aplikasi tidak dijalankan
   const { C, $, $$, esc, ic, data, Store, UI, App, tanggal, durasiTeks, angka } = BA;
   const Pages = BA.Pages;
 
