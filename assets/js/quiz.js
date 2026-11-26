@@ -110,6 +110,17 @@
 
   // Ritme ujian: 100 menit untuk 110 soal ≈ 54,5 detik per soal
   const DETIK_PER_SOAL = 6000 / 110;
+  const DETIK_SOAL = Math.round(DETIK_PER_SOAL); // 55 detik untuk mode per soal
+  // Mode waktu latihan: 'ujian' = hitung mundur total (seperti CAT BKN),
+  // 'soal' = hitung mundur tiap soal & otomatis lanjut, 'bebas' = tanpa batas.
+  const PARAM_WAKTU = { ujian: '1', soal: 'soal', bebas: '0' };
+  const modeWaktu = (w) => (w === 'soal' ? 'soal' : w === '0' ? 'bebas' : w === '1' ? 'ujian' : Store.d.pref.waktu || 'ujian');
+  function aturWaktu(sesi, mode) {
+    const n = sesi.soalIds.length;
+    if (mode === 'ujian') sesi.batas = Math.round(n * DETIK_PER_SOAL);
+    else if (mode === 'soal') sesi.perSoal = DETIK_SOAL;
+    sesi.sumber.waktu = PARAM_WAKTU[mode];
+  }
   const waktuTeks = (d) => (d >= 60 ? `${Math.floor(d / 60)} mnt ${d % 60} dtk` : `${d} dtk`);
 
   function opsiHTML(sesi, s) {
@@ -164,10 +175,7 @@
     sumber.n = nParam;
     if (!soal.length) return kosong(tg ? `Belum ada soal tingkat ${namaTingkat[tg].toLowerCase()} untuk bagian ini.` : 'Belum ada soal untuk bagian ini.', tipe === 'm' ? `#/materi/${id}?tab=latihan` : '#/latihan');
     const sesi = buatSesi('latihan', judul, sumber, soal);
-    if (q.get('waktu') === '1') {
-      sesi.batas = Math.round(soal.length * DETIK_PER_SOAL);
-      sumber.waktu = '1';
-    }
+    aturWaktu(sesi, modeWaktu(q.get('waktu')));
     return jalankanLatihan(sesi, 0, hash);
   };
 
@@ -178,7 +186,9 @@
     const u = Store.d.ulang;
     const soal = u && u.ids ? u.ids.map(data.soal).filter(Boolean) : [];
     if (!soal.length) return { redirect: '#/latihan' };
-    return jalankanLatihan(buatSesi('latihan', 'Ulangi: ' + u.judul.replace(/^Ulangi: /, ''), { tipe: 'ulang' }, acak(soal)), 0, hash);
+    const sesi = buatSesi('latihan', 'Ulangi: ' + u.judul.replace(/^Ulangi: /, ''), { tipe: 'ulang' }, acak(soal));
+    aturWaktu(sesi, modeWaktu(null));
+    return jalankanLatihan(sesi, 0, hash);
   };
 
   function kosong(pesan, balik) {
@@ -203,6 +213,21 @@
     // Batas waktu memakai jam dinding: refresh / tutup halaman tidak mengulang waktu
     if (sesi.batas && !sesi.akhir) sesi.akhir = sesi.mulai + sesi.batas * 1000;
     if (sesi.terpakai == null) sesi.terpakai = 0;
+    // Mode per soal: tiap soal punya tenggat sendiri (jam dinding). Jika halaman
+    // sempat tertutup, soal yang waktunya sudah lewat dianggap terlewati.
+    let habisSaatDibuka = false;
+    if (sesi.perSoal) {
+      if (!sesi.akhirSoal) sesi.akhirSoal = Date.now() + sesi.perSoal * 1000;
+      while (Date.now() >= sesi.akhirSoal) {
+        const id = sesi.soalIds[i];
+        if (!sesi.waktu[id]) sesi.waktu[id] = sesi.perSoal;
+        if (i >= N - 1) { habisSaatDibuka = true; break; }
+        i++;
+        sesi.akhirSoal += sesi.perSoal * 1000;
+      }
+    }
+    const berwaktu = !!(sesi.batas || sesi.perSoal);
+    const sisaAwal = sesi.perSoal ? (sesi.akhirSoal - Date.now()) / 1000 : sesi.batas ? (sesi.akhir - Date.now()) / 1000 : sesi.terpakai;
     const simpan = () => Store.simpanAktif(hash, sesi, i);
     simpan();
 
@@ -212,7 +237,7 @@
           <a class="iconbtn" href="${asalLatihan(sesi)}" aria-label="Keluar latihan">${ic('x')}</a>
           <div class="run__title"><span class="run__kicker">Latihan</span><b>${esc(sesi.judul)}</b></div>
           <div class="run__score">
-            <span class="run__timer${sesi.batas ? ' is-count' : ''}" id="rTimer" title="${sesi.batas ? 'Sisa waktu (ritme ujian ±55 detik per soal)' : 'Waktu berjalan'}">${ic('timer')}<b>${sesi.batas ? jam(Math.max(0, (sesi.akhir - Date.now()) / 1000)) : jam(sesi.terpakai)}</b></span>
+            <span class="run__timer${berwaktu ? ' is-count' : ''}" id="rTimer" title="${sesi.perSoal ? `Sisa waktu soal ini (${sesi.perSoal} detik per soal, otomatis lanjut)` : sesi.batas ? 'Sisa waktu seluruh latihan (ritme CAT ±55 detik per soal)' : 'Waktu berjalan (tanpa batas)'}">${ic('timer')}<b>${jam(Math.max(0, sisaAwal))}</b></span>
             <span class="run__ok" title="Soal dijawab — kunci & pembahasan terbuka setelah selesai">${ic('checkCircle')}<b id="rBenar">${dijawab}</b></span>
             <span class="run__count"><b id="rNo">1</b>/${N}</span>
           </div>
@@ -245,13 +270,19 @@
           clearInterval(tick);
           sesi.terpakai = terpakai();
           selesaikan(sesi);
-          if (otomatis) UI.toast(`${ic('timer')}<span>Waktu habis — soal yang belum dijawab dihitung kosong.</span>`);
+          if (otomatis) UI.toast(`${ic('timer')}<span>Waktu habis — jawaban dikumpulkan otomatis; soal yang belum dijawab dihitung kosong.</span>`);
           App.go('#/hasil');
         };
         let detik = 0;
         const detak = () => {
           if (selesai) return;
-          if (sesi.batas) {
+          if (sesi.perSoal) {
+            const sisa = Math.ceil((sesi.akhirSoal - Date.now()) / 1000);
+            timerEl.querySelector('b').textContent = jam(Math.max(0, sisa));
+            timerEl.classList.toggle('is-warn', sisa <= 10);
+            if (sisa <= 0) lanjut(true);
+            else if (++detik % 10 === 0) simpanWaktu();
+          } else if (sesi.batas) {
             const sisa = Math.round((sesi.akhir - Date.now()) / 1000);
             timerEl.querySelector('b').textContent = jam(Math.max(0, sisa));
             timerEl.classList.toggle('is-warn', sisa <= 60);
@@ -266,6 +297,8 @@
         document.addEventListener('visibilitychange', onHide);
         window.addEventListener('pagehide', onHide);
 
+        // Saat berwaktu, soal boleh dilewati (dihitung kosong) seperti ujian sungguhan
+        const labelNext = (pil) => (i === N - 1 ? (pil == null && berwaktu ? 'Lewati & lihat hasil' : 'Lihat hasil') : pil == null && berwaktu ? 'Lewati' : 'Soal berikutnya');
         const render = () => {
           const s = soal[i];
           t0 = Date.now();
@@ -274,7 +307,7 @@
             <div class="${kelasOpsi(s)}" role="group" aria-label="Pilihan jawaban">${opsiHTML(sesi, s)}</div>
             <div class="q__foot">
               <span class="hint">${ic('keyboard')}Tekan <kbd>A</kbd>–<kbd>${HURUF[s.opsi.length - 1]}</kbd> untuk memilih</span>
-              <button class="btn btn--ink" data-act="next" ${pil == null ? 'disabled' : ''}>${i === N - 1 ? 'Lihat hasil' : 'Soal berikutnya'} ${ic('arrowRight', 'i-arrow')}</button>
+              <button class="btn btn--ink" data-act="next" ${pil == null && !berwaktu ? 'disabled' : ''}><span>${labelNext(pil)}</span> ${ic('arrowRight', 'i-arrow')}</button>
             </div>`;
           if (pil != null) $$('.opt', card).forEach((b) => { const on = +b.dataset.oi === pil; b.classList.toggle('is-picked', on); b.setAttribute('aria-pressed', String(on)); });
           card.classList.remove('q-enter'); void card.offsetWidth; card.classList.add('q-enter');
@@ -305,6 +338,7 @@
           simpan();
           const nx = $('[data-act="next"]', card);
           nx.disabled = false;
+          nx.querySelector('span').textContent = labelNext(oi);
           if (baru) setTimeout(() => {
             nx.focus({ preventScroll: true });
             const r = nx.getBoundingClientRect();
@@ -312,24 +346,27 @@
           }, 200);
         };
 
-        const lanjut = () => {
+        const lanjut = (waktuHabis) => {
           const s = soal[i];
-          if (sesi.jawaban[s.id] == null) return;
+          if (selesai || (sesi.jawaban[s.id] == null && !berwaktu)) return;
           sesi.waktu[s.id] = (sesi.waktu[s.id] || 0) + Math.max(1, Math.round((Date.now() - t0) / 1000));
+          if (sesi.perSoal && sesi.waktu[s.id] > sesi.perSoal) sesi.waktu[s.id] = sesi.perSoal;
           if (i < N - 1) {
             i++;
+            if (sesi.perSoal) sesi.akhirSoal = Date.now() + sesi.perSoal * 1000;
+            if (waktuHabis) UI.toast(`${ic('timer')}<span>Waktu soal ${i} habis — otomatis lanjut ke soal ${i + 1}.</span>`);
             simpanWaktu();
             render();
             window.scrollTo({ top: 0, behavior: BA.reduceMotion() ? 'auto' : 'smooth' });
           } else {
-            akhiri(false);
+            akhiri(!!waktuHabis);
           }
         };
 
         card.addEventListener('click', (e) => {
           const o = e.target.closest('.opt');
           if (o && !o.disabled) { pilih(+o.dataset.oi); return; }
-          if (e.target.closest('[data-act="next"]')) lanjut();
+          if (e.target.closest('[data-act="next"]')) lanjut(false);
         });
         const onKey = (e) => {
           if (sedangMengetik(e) || document.querySelector('.modal')) return;
@@ -338,17 +375,17 @@
           if (k >= 0 && k < s.opsi.length) {
             e.preventDefault();
             pilih(urutanOpsi(sesi, s)[k]);
-          } else if (e.key === 'Enter' && sesi.jawaban[s.id] != null) {
+          } else if (e.key === 'Enter' && (sesi.jawaban[s.id] != null || berwaktu)) {
             e.preventDefault();
-            lanjut();
+            lanjut(false);
           } else if (e.key === 'Escape') {
             location.hash = asalLatihan(sesi);
           }
         };
         document.addEventListener('keydown', onKey);
         render();
-        if (sesi.batas && Date.now() >= sesi.akhir) setTimeout(() => akhiri(true), 0);
-        else if (dilanjutkan) UI.toast(`${ic('play')}<span>Melanjutkan latihan dari soal ${i + 1}${sesi.batas ? ' — waktu tetap berjalan' : ''}.</span>`);
+        if (habisSaatDibuka || (sesi.batas && Date.now() >= sesi.akhir)) setTimeout(() => akhiri(true), 0);
+        else if (dilanjutkan) UI.toast(`${ic('play')}<span>Melanjutkan latihan dari soal ${i + 1}${berwaktu ? ' — waktu tetap berjalan' : ''}.</span>`);
 
         return {
           cleanup() {
@@ -362,7 +399,7 @@
             if (selesai || !Object.keys(sesi.jawaban).length) return Promise.resolve(true);
             return UI.modal({
               judul: 'Keluar dari latihan?',
-              isi: `<p>Kamu sudah menjawab ${Object.keys(sesi.jawaban).length} dari ${N} soal. Jawabanmu <b>tersimpan</b> dan bisa dilanjutkan dari halaman Latihan.${sesi.batas ? ' Ingat, <b>waktu tetap berjalan</b> walaupun halaman ditutup.' : ''}</p>`,
+              isi: `<p>Kamu sudah menjawab ${Object.keys(sesi.jawaban).length} dari ${N} soal. Jawabanmu <b>tersimpan</b> dan bisa dilanjutkan dari halaman Latihan.${berwaktu ? ' Ingat, <b>waktu tetap berjalan</b> walaupun halaman ditutup.' : ''}</p>`,
               ok: 'Keluar', batal: 'Lanjutkan latihan', nada: 'ink',
             });
           },
@@ -694,7 +731,7 @@
       .sort((a, b) => a.akurasi - b.akurasi)
       .slice(0, 3);
 
-    const w = (src.waktu ? '&waktu=1' : '') + (src.tingkat ? '&tingkat=' + src.tingkat : '');
+    const w = (src.waktu ? '&waktu=' + src.waktu : '') + (src.tingkat ? '&tingkat=' + src.tingkat : '');
     const simQ = [src.khusus ? 'khusus=1' : '', src.tingkat ? 'tingkat=' + src.tingkat : ''].filter(Boolean).join('&');
     const ulangHref = src.tipe === 'materi' ? `#/latihan/m/${src.id}?n=${src.n || 10}${w}`
       : src.tipe === 'kategori' ? `#/latihan/k/${src.id}?n=${src.n || 10}${w}`

@@ -7,7 +7,29 @@
   const Pages = (BA.Pages = {});
 
   // Parameter latihan dari preferensi: waktu ujian & tingkat kesulitan
-  const prefQ = () => (Store.d.pref.berwaktu ? '&waktu=1' : '') + (Store.d.pref.tingkat ? '&tingkat=' + Store.d.pref.tingkat : '');
+  // Mode waktu: ujian (hitung mundur total, bawaan — seperti CAT BKN), soal (55 dtk/soal, otomatis lanjut), bebas
+  const PARAM_WAKTU = { ujian: '1', soal: 'soal', bebas: '0' };
+  const modeWaktu = () => (PARAM_WAKTU[Store.d.pref.waktu] ? Store.d.pref.waktu : 'ujian');
+  const LABEL_WAKTU = [['ujian', 'Waktu ujian (mundur)'], ['soal', '55 dtk per soal'], ['bebas', 'Tanpa batas']];
+  const INFO_WAKTU = {
+    ujian: 'Seperti CAT BKN: satu hitung mundur untuk semua soal (±55 detik × jumlah soal). Saat waktu habis, jawaban otomatis dikumpulkan.',
+    soal: 'Latihan kecepatan: setiap soal diberi 55 detik. Jika waktunya habis, otomatis pindah ke soal berikutnya.',
+    bebas: 'Tanpa batas waktu, cocok untuk memahami pola soal. Waktu hanya dicatat.',
+  };
+  const segWaktu = (id, lebar) => `<fieldset class="seg${lebar ? " seg--wide" : ""}" id="${id}">
+      <legend>Waktu</legend>
+      ${LABEL_WAKTU.map(([v, l]) => `<label><input type="radio" name="waktu" value="${v}" ${modeWaktu() === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}
+    </fieldset>
+    <p class="seg__note" data-info-waktu>${INFO_WAKTU[modeWaktu()]}</p>`;
+  const pasangSegWaktu = (el, onUbah) => el && el.addEventListener('change', (e) => {
+    if (e.target.name !== 'waktu') return;
+    Store.d.pref.waktu = e.target.value;
+    Store.save();
+    const info = el.parentNode.querySelector('[data-info-waktu]');
+    if (info) info.textContent = INFO_WAKTU[e.target.value];
+    onUbah && onUbah(e.target.value);
+  });
+  const prefQ = () => '&waktu=' + PARAM_WAKTU[modeWaktu()] + (Store.d.pref.tingkat ? '&tingkat=' + Store.d.pref.tingkat : '');
   BA.prefQ = prefQ;
   const LABEL_TINGKAT = [['', 'Semua tingkat'], ['mudah', 'Mudah'], ['sedang', 'Sedang'], ['sulit', 'Sulit']];
 
@@ -17,7 +39,8 @@
     if (!a || !a.sesi || !a.hash || !Array.isArray(a.sesi.soalIds)) return '';
     const s = a.sesi, N = s.soalIds.length, dj = Object.keys(s.jawaban || {}).length;
     let waktu = '';
-    if (s.akhir) {
+    if (s.perSoal) waktu = `${s.perSoal} dtk per soal, waktu tetap berjalan`;
+    else if (s.akhir) {
       const sisa = Math.round((s.akhir - Date.now()) / 1000);
       waktu = sisa > 0 ? `sisa waktu ${jam(sisa)}` : 'waktu sudah habis, buka untuk melihat hasil';
     }
@@ -97,7 +120,7 @@
   }
 
   const FAQ = [
-    ['Apakah soal SKD ada batas waktunya?', 'Ada. Sebanyak 110 soal dikerjakan dalam 100 menit dengan sistem CAT, atau sekitar 55 detik per soal. Pelamar formasi khusus disabilitas netra mendapat 130 menit. Simulasi di sini memakai batas waktu yang sama, dan latihan per topik bisa diatur memakai ritme ujian.'],
+    ['Apakah soal SKD ada batas waktunya?', 'Ada. Sebanyak 110 soal dikerjakan dalam 100 menit dengan sistem CAT, atau sekitar 55 detik per soal. Pelamar formasi khusus disabilitas netra mendapat 130 menit. Waktunya satu hitung mundur untuk semua soal (bukan per soal), kamu bebas berpindah nomor, dan jawaban otomatis dikumpulkan saat waktu habis. Simulasi di sini memakai cara yang sama, dan latihan per topik secara bawaan juga memakai hitung mundur.'],
     ['Apakah materi di sini mengikuti kisi-kisi SKD terbaru?', 'Materi disusun mengikuti struktur SKD yang digunakan pada seleksi CPNS: TWK, TIU, dan TKP. Ketentuan seperti jumlah soal dan passing grade dapat berubah setiap tahun, jadi selalu cocokkan dengan pengumuman resmi panitia seleksi.'],
     ['Bagaimana sistem penilaian TKP?', 'Setiap opsi jawaban TKP bernilai 1 sampai 5 dan tidak ada nilai nol. Karena itu, jangan pernah mengosongkan soal TKP. Skor setiap opsi ditampilkan di halaman hasil setelah latihan selesai.'],
     ['Apa bedanya mode latihan dan simulasi?', 'Mode latihan berisi sedikit soal per topik, cocok untuk memahami pola soal; kunci jawaban dan pembahasan terbuka setelah semua soal selesai dikerjakan. Mode simulasi meniru ujian CAT: ada batas waktu, tanda ragu-ragu, dan pembahasan baru terbuka setelah kamu menekan Selesai.'],
@@ -495,11 +518,7 @@
             ${opsiN.map((n) => `<label><input type="radio" name="n" value="${n}" ${n === 10 ? 'checked' : ''}><span>${n} soal</span></label>`).join('')}
             <label><input type="radio" name="n" value="semua" ${!opsiN.includes(10) ? 'checked' : ''}><span>Semua (<span id="nSemua">${soal.length}</span>)</span></label>
           </fieldset>
-          <fieldset class="seg">
-            <legend>Waktu</legend>
-            <label><input type="radio" name="waktu" value="0" ${Store.d.pref.berwaktu ? '' : 'checked'}><span>Tanpa batas</span></label>
-            <label><input type="radio" name="waktu" value="1" ${Store.d.pref.berwaktu ? 'checked' : ''}><span>Ritme ujian · ±55 dtk/soal</span></label>
-          </fieldset>
+          ${segWaktu('segWaktu')}
           <button class="btn btn--sun btn--lg" id="startLatihan">Mulai Latihan ${ic('arrowRight', 'i-arrow')}</button>` : `<div class="empty"><b>Belum ada soal untuk materi ini.</b></div>`}
         </div>
         <aside class="practice__side reveal" style="--d:1">
@@ -512,7 +531,7 @@
           <h3>${ic('history')}Aman jika ter-refresh</h3>
           <p>Jawabanmu tersimpan otomatis. Jika halaman tertutup, buka lagi latihannya untuk melanjutkan dari soal terakhir; batas waktu tidak diulang dari awal.</p>
           <h3>${ic('timer')}Soal SKD ada waktunya</h3>
-          <p>Di ujian asli, 110 soal dikerjakan dalam 100 menit (±55 detik per soal). Pilih <b>Ritme ujian</b> untuk berlatih dengan batas waktu yang sama. <a class="link link--sm" href="#/panduan">Panduan SKD ${ic('arrowRight', 'i-arrow')}</a></p>
+          <p>Di CAT BKN, 110 soal dikerjakan dalam 100 menit dengan <b>satu hitung mundur</b> (±55 detik per soal), dan jawaban otomatis dikumpulkan saat waktu habis. Mode <b>Waktu ujian</b> meniru cara itu. <a class="link link--sm" href="#/panduan">Panduan SKD ${ic('arrowRight', 'i-arrow')}</a></p>
           <h3>${ic('target')}Tips</h3>
           <p>Baca rangkuman dan cara cepat terlebih dahulu. Setelah selesai, gunakan tombol <b>Ulangi yang salah</b> di halaman hasil untuk mengulang soal yang belum tepat.</p>
         </aside>
@@ -571,12 +590,13 @@
               if (el) el.textContent = n;
             };
             segT && segT.addEventListener('change', perbaruiN);
+            pasangSegWaktu($('#segWaktu', panel));
             perbaruiN();
             st && st.addEventListener('click', () => {
               const v = ($('input[name="n"]:checked', panel) || {}).value || '10';
-              const berwaktu = ($('input[name="waktu"]:checked', panel) || {}).value === '1';
+              const mw = ($('input[name="waktu"]:checked', panel) || {}).value || 'ujian';
               const tg = ($('input[name="tingkat"]:checked', panel) || {}).value || '';
-              Store.d.pref.berwaktu = berwaktu;
+              Store.d.pref.waktu = mw;
               Store.d.pref.tingkat = tg;
               Store.save();
               App.go(`#/latihan/m/${m.id}?n=${v}${prefQ()}`);
@@ -648,11 +668,7 @@
           <legend>Tingkat kesulitan soal</legend>
           ${LABEL_TINGKAT.map(([v, l]) => `<label><input type="radio" name="tingkat" value="${v}" ${(Store.d.pref.tingkat || '') === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}
         </fieldset>
-        <label class="switch reveal">
-          <input type="checkbox" id="prefWaktu" ${Store.d.pref.berwaktu ? 'checked' : ''}>
-          <span class="switch__ui" aria-hidden="true"></span>
-          <span class="switch__txt"><b>Latihan dengan waktu ujian</b><small>Batas ±55 detik per soal, sama dengan ritme SKD (100 menit untuk 110 soal). Soal yang belum dijawab saat waktu habis dihitung kosong.</small></span>
-        </label>
+        <div class="reveal seg-waktu">${segWaktu("prefWaktu", true)}</div>
         ${C.kategori.map((k, ki) => {
           const ms = data.materiKategori(k.id);
           const nk = data.soalKategori(k.id).length;
@@ -704,13 +720,7 @@
       mount(root) {
         UI.pasangBannerAktif(root);
         const segarkan = () => $$('[data-base]', root).forEach((a) => (a.href = a.dataset.base + wq()));
-        const t = $('#prefWaktu', root);
-        t.addEventListener('change', () => {
-          Store.d.pref.berwaktu = t.checked;
-          Store.save();
-          segarkan();
-          UI.toast(t.checked ? `${ic('timer')}<span>Latihan memakai waktu ujian (±55 dtk/soal)</span>` : '<span>Latihan tanpa batas waktu</span>');
-        });
+        pasangSegWaktu($('#prefWaktu', root), segarkan);
         $('#prefTingkat', root).addEventListener('change', (e) => {
           Store.d.pref.tingkat = e.target.value;
           Store.save();

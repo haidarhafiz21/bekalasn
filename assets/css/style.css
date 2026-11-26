@@ -1405,3 +1405,7 @@ body[data-layout="gate"] .nav, body[data-layout="gate"] .footer { display: none;
   .pcard, .hlist__ul, .stat { break-inside: avoid; }
   .prog__grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* ---------- pilihan mode waktu latihan ---------- */
+.seg__note { margin: -14px 0 22px; font-size: 13.5px; line-height: 1.5; color: var(--ink-500); max-width: 560px; }
+.seg-waktu .seg__note { margin: 10px 4px 0; }
