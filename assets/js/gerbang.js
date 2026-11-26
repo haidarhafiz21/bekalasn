@@ -113,28 +113,25 @@
     document.title = 'Aktivasi lisensi — ' + NAMA;
     const meta = (window.BEKALASN_KONTEN && window.BEKALASN_KONTEN.meta) || {};
     const harusPasang = iOS && !standalone && !dalamAplikasi;
-    let kartu;
+    // ID perangkat & kolom kunci SELALU ditampilkan (juga di iPhone/Safari dan browser
+    // dalam aplikasi). Untuk kondisi yang datanya mudah hilang, cukup diberi saran.
+    let saran = '';
     if (dalamAplikasi) {
-      kartu = `<div class="gate__card gate__install">
-        <h2>Buka di browser dulu</h2>
-        <p>Kamu membuka halaman ini dari dalam aplikasi lain (TikTok, Instagram, atau Facebook). Agar lisensi tersimpan dengan aman, buka di <b>Chrome</b> atau <b>Safari</b>.</p>
-        <ol><li>Ketuk tombol <b>⋯</b> atau <b>⋮</b> di pojok kanan atas.</li><li>Pilih <b>Buka di browser</b> / <b>Open in browser</b>.</li></ol>
-        <button class="btn btn--ghost btn--block" id="gSalinLink" type="button" style="margin-top:18px">${ikon(IK.salin)}<span>Salin tautan halaman</span></button>
-      </div>`;
+      saran = `<div class="gate__tip"><b>Sebaiknya buka di Chrome atau Safari.</b> Kamu sedang membuka halaman ini dari dalam aplikasi lain (TikTok, Instagram, atau Facebook), dan lisensinya bisa hilang saat aplikasi itu ditutup. Ketuk <b>⋯</b>/<b>⋮</b> di pojok kanan atas → <b>Buka di browser</b>.
+        <button class="btn btn--ghost btn--sm" id="gSalinLink" type="button">${ikon(IK.salin)}<span>Salin tautan halaman</span></button></div>`;
     } else if (harusPasang) {
-      kartu = `<div class="gate__card gate__install">
-        <h2>Pasang ke Layar Utama dulu</h2>
-        <p>Di iPhone, aplikasi yang dibuka dari ikon Layar Utama menyimpan data terpisah dari Safari. Agar lisensi tidak hilang, aktifkan dari ikon tersebut.</p>
+      saran = `<details class="gate__tip"><summary><b>Saran untuk iPhone:</b> pasang ke Layar Utama dulu agar lisensi tidak hilang.</summary>
         <ol>
           <li>Ketuk tombol <b>Bagikan</b> (kotak dengan panah ke atas) di Safari.</li>
           <li>Pilih <b>Tambah ke Layar Utama</b>, lalu ketuk <b>Tambah</b>.</li>
-          <li>Buka <b>${esc(NAMA)}</b> dari ikon di Layar Utama. ID perangkat dan kolom kunci lisensi akan muncul di sana.</li>
-        </ol>
-      </div>`;
-    } else {
-      kartu = `<div class="gate__card">
+          <li>Buka <b>${esc(NAMA)}</b> dari ikon itu. ID perangkat di sana <b>berbeda</b> dengan di Safari, jadi minta kunci untuk ID yang tampil di ikon tersebut.</li>
+        </ol></details>`;
+    }
+    const kartu = `<div class="gate__card">
+        <div class="gate__mlogo">${logo}</div>
         <h2>Aktivasi lisensi</h2>
         <p>Kunci lisensi berlaku untuk <b>perangkat dan browser ini</b>.</p>
+        ${saran}
         <div class="gate__id"><div><span>ID perangkat ini</span><b id="gId">${esc(dev)}</b></div><button class="btn btn--ghost btn--sm" id="gSalin" type="button">${ikon(IK.salin)}<span>Salin</span></button></div>
         <label class="gate__label" for="gKunci">Kunci lisensi</label>
         <textarea id="gKunci" rows="4" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="BA1-…"></textarea>
@@ -142,7 +139,6 @@
         <button class="btn btn--sun btn--block btn--lg" id="gAktif" type="button">${ikon(IK.kunci)}<span>Aktifkan</span></button>
         <p class="gate__foot">${ikon(IK.perisai)}Satu kunci lisensi berlaku untuk satu perangkat.</p>
       </div>`;
-    }
     app().innerHTML = `<section class="gate">
       <div class="container gate__grid">
         <div class="gate__intro">
