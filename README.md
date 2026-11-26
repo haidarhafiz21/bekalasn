@@ -2,7 +2,7 @@
 
 Rangkuman materi, cara cepat, latihan soal bertimer dengan pembahasan, dan simulasi CAT SKD (TWK, TIU, TKP).
 
-**Buka situs:** https://haidarhafiz21.github.io/bekalasn/
+**Buka situs:** https://bekalasn.bisnispamekasan.biz.id/
 
 Akses materi memerlukan **kunci lisensi**. Buka situsnya, salin *ID perangkat* yang tampil di layar aktivasi, lalu hubungi penjual untuk mendapatkan kunci.
 
